@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'api_service.dart';
+import 'detail_screen.dart'; // Importar la clase DetailScreen correcta
 
 void main() {
   runApp(const MyApp());
@@ -73,9 +74,36 @@ class _MyHomePageState extends State<MyHomePage> {
               itemCount: _movies.length,
               itemBuilder: (context, index) {
                 final movie = _movies[index];
-                return ListTile(
-                  title: Text(movie['title'] ?? 'Unknown'),
-                  subtitle: Text('Rating: ${movie['vote_average'] ?? 'N/A'}'),
+                return Card(
+                  elevation: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  child: ListTile(
+                    leading: movie['poster_path'] != null
+                        ? Image.network(
+                            'https://image.tmdb.org/t/p/w92${movie['poster_path']}',
+                            width: 50,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(Icons.error),
+                          )
+                        : const Icon(Icons.movie),
+                    title: Text(movie['title'] ?? 'Unknown'),
+                    subtitle: Text(
+                      movie['overview'] ?? 'No overview available',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DetailScreen(
+                            id: movie['id'],
+                            isMovie: true,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
             ),
@@ -90,9 +118,36 @@ class _MyHomePageState extends State<MyHomePage> {
               itemCount: _tvShows.length,
               itemBuilder: (context, index) {
                 final tvShow = _tvShows[index];
-                return ListTile(
-                  title: Text(tvShow['name'] ?? 'Unknown'),
-                  subtitle: Text('Rating: ${tvShow['vote_average'] ?? 'N/A'}'),
+                return Card(
+                  elevation: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  child: ListTile(
+                    leading: tvShow['poster_path'] != null
+                        ? Image.network(
+                            'https://image.tmdb.org/t/p/w92${tvShow['poster_path']}',
+                            width: 50,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(Icons.error),
+                          )
+                        : const Icon(Icons.tv),
+                    title: Text(tvShow['name'] ?? 'Unknown'),
+                    subtitle: Text(
+                      tvShow['overview'] ?? 'No overview available',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DetailScreen(
+                            id: tvShow['id'],
+                            isMovie: false,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
             ),
