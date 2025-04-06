@@ -141,4 +141,52 @@ class ApiService {
       throw Exception('Failed to load TV show details');
     }
   }
+
+  Future<List<dynamic>> searchMovies(String query) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/search/movie?api_key=$_apiKey&query=$query'),
+    );
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return data['results'];
+    } else {
+      throw Exception('Failed to search movies');
+    }
+  }
+
+  Future<List<dynamic>> searchTVShows(String query) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/search/tv?api_key=$_apiKey&query=$query'),
+    );
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return data['results'];
+    } else {
+      throw Exception('Failed to search TV shows');
+    }
+  }
+
+  Future<List<dynamic>> fetchMoviesByGenre(int genreId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/discover/movie?api_key=$_apiKey&with_genres=$genreId'),
+    );
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return data['results'];
+    } else {
+      throw Exception('Failed to fetch movies by genre');
+    }
+  }
+
+  Future<List<dynamic>> fetchTVShowsByGenre(int genreId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/discover/tv?api_key=$_apiKey&with_genres=$genreId'),
+    );
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return data['results'];
+    } else {
+      throw Exception('Failed to fetch TV shows by genre');
+    }
+  }
 }

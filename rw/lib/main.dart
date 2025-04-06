@@ -36,6 +36,7 @@ class _MyHomePageState extends State<MyHomePage> {
   List<dynamic> _movies = [];
   List<dynamic> _tvShows = [];
   Map<int, String> _genreMap = {}; // Mapa para almacenar géneros
+  String _searchQuery = ''; // Consulta de búsqueda
 
   @override
   void initState() {
@@ -69,16 +70,80 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  Future<void> _searchContent(String query) async {
+    try {
+      final movies = await _apiService.searchMovies(query);
+      final tvShows = await _apiService.searchTVShows(query);
+      setState(() {
+        _movies = movies;
+        _tvShows = tvShows;
+      });
+    } catch (e) {
+      print('Error searching content: $e');
+    }
+  }
+
+  Future<void> _filterByGenre(int genreId, bool isMovie) async {
+    try {
+      final content = isMovie
+          ? await _apiService.fetchMoviesByGenre(genreId)
+          : await _apiService.fetchTVShowsByGenre(genreId);
+      setState(() {
+        if (isMovie) {
+          _movies = content;
+        } else {
+          _tvShows = content;
+        }
+      });
+    } catch (e) {
+      print('Error filtering by genre: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
+        title: TextField(
+          decoration: const InputDecoration(
+            hintText: 'Buscar películas o series...',
+            border: InputBorder.none,
+            hintStyle: TextStyle(color: Colors.white70),
+          ),
+          style: const TextStyle(color: Colors.white),
+          onSubmitted: (query) {
+            setState(() {
+              _searchQuery = query;
+            });
+            _searchContent(query);
+          },
+        ),
+        actions: [
+          PopupMenuButton<int>(
+            icon: const Icon(Icons.filter_list),
+            onSelected: (genreId) {
+              _filterByGenre(genreId, true); // Filtrar películas por género
+            },
+            itemBuilder: (context) {
+              return _genreMap.entries
+                  .map((entry) => PopupMenuItem<int>(
+                        value: entry.key,
+                        child: Text(entry.value),
+                      ))
+                  .toList();
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
+            if (_searchQuery.isNotEmpty)
+              Text(
+                'Resultados para "$_searchQuery"',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
             const Text(
               'Popular Movies',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
