@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'api_service.dart';
 import 'detail_screen.dart'; // Importar la clase DetailScreen correcta
+import 'genre_screen.dart'; // Importar la pantalla para mostrar contenido por género
 
 void main() {
   runApp(const MyApp());
@@ -34,11 +35,25 @@ class _MyHomePageState extends State<MyHomePage> {
   final ApiService _apiService = ApiService();
   List<dynamic> _movies = [];
   List<dynamic> _tvShows = [];
+  Map<int, String> _genreMap = {}; // Mapa para almacenar géneros
 
   @override
   void initState() {
     super.initState();
+    _fetchGenres(); // Obtener géneros al iniciar
     _fetchMoviesAndTVShows();
+  }
+
+  Future<void> _fetchGenres() async {
+    try {
+      final movieGenres = await _apiService.fetchMovieGenres();
+      final tvGenres = await _apiService.fetchTVGenres();
+      setState(() {
+        _genreMap = {...movieGenres, ...tvGenres}; // Combinar géneros de películas y series
+      });
+    } catch (e) {
+      print('Error fetching genres: $e');
+    }
   }
 
   Future<void> _fetchMoviesAndTVShows() async {
@@ -74,6 +89,9 @@ class _MyHomePageState extends State<MyHomePage> {
               itemCount: _movies.length,
               itemBuilder: (context, index) {
                 final movie = _movies[index];
+                final genreTags = (movie['genre_ids'] as List<dynamic>)
+                    .map((id) => _genreMap[id] ?? 'Unknown')
+                    .toList();
                 return Card(
                   elevation: 4,
                   margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -87,10 +105,44 @@ class _MyHomePageState extends State<MyHomePage> {
                           )
                         : const Icon(Icons.movie),
                     title: Text(movie['title'] ?? 'Unknown'),
-                    subtitle: Text(
-                      movie['overview'] ?? 'No overview available',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 6,
+                          children: genreTags
+                              .map((genre) => ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => GenreScreen(
+                                            genre: genre,
+                                            isMovie: true,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.purple[100],
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      genre,
+                                      style: const TextStyle(color: Colors.black),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          movie['overview'] ?? 'No overview available',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                     onTap: () {
                       Navigator.push(
@@ -118,6 +170,9 @@ class _MyHomePageState extends State<MyHomePage> {
               itemCount: _tvShows.length,
               itemBuilder: (context, index) {
                 final tvShow = _tvShows[index];
+                final genreTags = (tvShow['genre_ids'] as List<dynamic>)
+                    .map((id) => _genreMap[id] ?? 'Unknown')
+                    .toList();
                 return Card(
                   elevation: 4,
                   margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -131,10 +186,44 @@ class _MyHomePageState extends State<MyHomePage> {
                           )
                         : const Icon(Icons.tv),
                     title: Text(tvShow['name'] ?? 'Unknown'),
-                    subtitle: Text(
-                      tvShow['overview'] ?? 'No overview available',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 6,
+                          children: genreTags
+                              .map((genre) => ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => GenreScreen(
+                                            genre: genre,
+                                            isMovie: false,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.purple[100],
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      genre,
+                                      style: const TextStyle(color: Colors.black),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tvShow['overview'] ?? 'No overview available',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                     onTap: () {
                       Navigator.push(
