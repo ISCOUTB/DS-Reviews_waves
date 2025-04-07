@@ -189,4 +189,13 @@ class ApiService {
       throw Exception('Failed to fetch TV shows by genre');
     }
   }
+
+  // Obtener imagen de fondo de una película o serie
+  String getBackdropUrl(String? backdropPath) {
+    if (backdropPath != null) {
+      return 'https://image.tmdb.org/t/p/w780$backdropPath'; // Resolución adecuada para fondos
+    } else {
+      return 'https://via.placeholder.com/780x439.png?text=No+Image+Available'; // Fondo por defecto
+    }
+  }
 }

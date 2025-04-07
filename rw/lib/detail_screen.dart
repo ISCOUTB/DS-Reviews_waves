@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'api_service.dart';
-import 'reviews_screen.dart'; // Si tienes una pantalla de reseñas
 
 class DetailScreen extends StatefulWidget {
   final int id;
@@ -62,129 +61,108 @@ class DetailScreenState extends State<DetailScreen> {
     }
 
     final String title = widget.isMovie ? _details!['title'] ?? 'Sin título' : _details!['name'] ?? 'Sin título';
-    final String? posterPath = _details!['poster_path'];
     final String overview = _details!['overview'] ?? 'No hay sinopsis disponible';
-    final List<dynamic> genres = _details!['genres'] ?? [];
-    final String genreNames = genres.isNotEmpty 
-        ? genres.map((genre) => genre['name']).join(', ')
-        : 'Sin géneros';
+    final String? posterPath = _details!['poster_path'];
+    final String posterUrl = posterPath != null ? 'https://image.tmdb.org/t/p/w185$posterPath' : '';
+    final String? backdropPath = _details!['backdrop_path'];
+    final String backdropUrl = _apiService.getBackdropUrl(backdropPath);
+    final String genreNames = _details!['genres']?.map((g) => g['name']).join(', ') ?? 'Sin géneros';
     final double voteAverage = (_details!['vote_average'] ?? 0.0).toDouble();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Imagen y detalles básicos
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Poster
-              if (posterPath != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    'https://image.tmdb.org/t/p/w300$posterPath',
-                    height: 200,
-                    width: 133,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Container(
-                          height: 200,
-                          width: 133,
-                          color: Colors.grey.shade200,
-                          child: const Icon(Icons.error, size: 50),
-                        ),
-                  ),
-                )
-              else
-                Container(
-                  height: 200,
-                  width: 133,
-                  color: Colors.grey.shade200,
-                  child: const Icon(Icons.image_not_supported, size: 50),
-                ),
-              const SizedBox(width: 16),
-              // Detalles a la derecha de la imagen
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(Icons.star, color: Colors.amber),
-                        const SizedBox(width: 4),
-                        Text('${voteAverage.toStringAsFixed(1)}/10'),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Géneros: ',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(genreNames),
-                  ],
-                ),
-              ),
-            ],
+    return Stack(
+      children: [
+        // Imagen de fondo
+        Positioned.fill(
+          child: Image.network(
+            backdropUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) =>
+                const Center(child: Text('No image available')),
           ),
-          
-          const SizedBox(height: 24),
-          
-          // Sinopsis
-          const Text(
-            'Sinopsis',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+        ),
+        // Efecto de difuminado
+        Positioned.fill(
+          child: Container(
+            color: Colors.black.withOpacity(0.6), // Más transparencia
           ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              overview,
-              style: const TextStyle(fontSize: 16),
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Botón para ver reseñas
-          Center(
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.rate_review),
-              label: const Text('Ver Reseñas'),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ReviewsScreen(
-                      id: widget.id,
-                      isMovie: widget.isMovie,
-                      title: title,
+        ),
+        // Contenido principal
+        Positioned.fill(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Póster de la película o serie
+                if (posterUrl.isNotEmpty)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      posterUrl,
+                      width: 150,
+                      height: 225,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.error, size: 50),
                     ),
                   ),
-                );
-              },
+                const SizedBox(width: 16),
+                // Información de la película o serie
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Géneros: $genreNames',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Colors.white,
+                            ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          const Icon(Icons.star, color: Colors.amber),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${voteAverage.toStringAsFixed(1)}/10',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Colors.white,
+                                ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        overview,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Colors.white70,
+                            ),
+                      ),
+                      const SizedBox(height: 20),
+                      // Botón destacado
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.rate_review),
+                        label: const Text('Ver Reseñas'),
+                        onPressed: () {
+                          // Acción para ver reseñas
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

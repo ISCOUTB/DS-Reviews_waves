@@ -47,16 +47,111 @@ class _MyAppState extends State<MyApp> {
         ),
       ),
       themeMode: _themeMode, // Cambia automáticamente entre claro y oscuro
-      home: MyHomePage(title: 'Flutter Demo Home Page', onToggleTheme: _toggleTheme),
+      home: GlobalScaffold(
+        onToggleTheme: _toggleTheme,
+        child: const MyHomePage(),
+      ),
+    );
+  }
+}
+
+class GlobalScaffold extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onToggleTheme;
+
+  const GlobalScaffold({super.key, required this.child, required this.onToggleTheme});
+
+  @override
+  State<GlobalScaffold> createState() => _GlobalScaffoldState();
+}
+
+class _GlobalScaffoldState extends State<GlobalScaffold> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  final TextEditingController _searchController = TextEditingController();
+
+  void _onSearchSubmitted(String query) {
+    if (query.isNotEmpty) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => Scaffold(
+            appBar: AppBar(
+              title: const Text('Resultados de Búsqueda'),
+            ),
+            body: MyHomePage(searchQuery: query),
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).primaryColor,
+        title: Row(
+          children: [
+            TextButton(
+              onPressed: () {
+                _navigatorKey.currentState?.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const MyHomePage()),
+                  (route) => false,
+                );
+              },
+              child: const Text(
+                'Reviews Waves',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Spacer(),
+            SizedBox(
+              width: 200,
+              child: TextField(
+                controller: _searchController,
+                decoration: const InputDecoration(
+                  hintText: 'Buscar...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(20)),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: Colors.white24,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                ),
+                style: const TextStyle(color: Colors.white),
+                onSubmitted: _onSearchSubmitted,
+              ),
+            ),
+            IconButton(
+              icon: Icon(
+                Theme.of(context).brightness == Brightness.dark
+                    ? Icons.light_mode
+                    : Icons.dark_mode,
+              ),
+              onPressed: widget.onToggleTheme,
+            ),
+          ],
+        ),
+      ),
+      body: Navigator(
+        key: _navigatorKey,
+        onGenerateRoute: (settings) {
+          Widget page = widget.child;
+          if (settings.name == '/detail') {
+            final args = settings.arguments as Map<String, dynamic>;
+            page = DetailScreen(id: args['id'], isMovie: args['isMovie']);
+          }
+          return MaterialPageRoute(builder: (_) => page);
+        },
+      ),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title, required this.onToggleTheme});
+  final String? searchQuery;
 
-  final String title;
-  final VoidCallback onToggleTheme;
+  const MyHomePage({super.key, this.searchQuery});
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -64,11 +159,11 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final ApiService _apiService = ApiService();
+  late Future<List<dynamic>> _searchResults;
   late Future<List<dynamic>> _moviesFuture;
   late Future<List<dynamic>> _tvShowsFuture;
   late Future<Map<int, String>> _genresFuture;
   Map<int, String> _genreMap = {}; // Mapa para almacenar géneros
-  String _searchQuery = ''; // Consulta de búsqueda
 
   @override
   void initState() {
@@ -76,6 +171,12 @@ class _MyHomePageState extends State<MyHomePage> {
     _genresFuture = _fetchGenres();
     _moviesFuture = _apiService.fetchMovies();
     _tvShowsFuture = _apiService.fetchTVShows();
+
+    if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
+      _searchResults = _apiService.searchMovies(widget.searchQuery!);
+    } else {
+      _searchResults = _apiService.fetchMovies();
+    }
   }
 
   Future<Map<int, String>> _fetchGenres() async {
@@ -97,74 +198,53 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).primaryColor,
-        title: TextField(
-          decoration: const InputDecoration(
-            hintText: 'Buscar películas o series...',
-            border: InputBorder.none,
-            hintStyle: TextStyle(color: Colors.white70),
-          ),
-          style: const TextStyle(color: Colors.white),
-          onSubmitted: (query) {
-            setState(() {
-              _searchQuery = query;
-              _moviesFuture = _apiService.searchMovies(query);
-              _tvShowsFuture = _apiService.searchTVShows(query);
-            });
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              Theme.of(context).brightness == Brightness.dark
-                  ? Icons.light_mode
-                  : Icons.dark_mode,
-            ),
-            onPressed: widget.onToggleTheme,
-          ),
-          FutureBuilder<Map<int, String>>(
-            future: _genresFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const CircularProgressIndicator();
-              } else if (snapshot.hasError) {
-                return const Icon(Icons.error);
-              } else {
-                return PopupMenuButton<int>(
-                  icon: const Icon(Icons.filter_list),
-                  onSelected: (genreId) {
-                    setState(() {
-                      _moviesFuture = _apiService.fetchMoviesByGenre(genreId);
-                      _tvShowsFuture = _apiService.fetchTVShowsByGenre(genreId);
-                    });
-                  },
-                  itemBuilder: (context) {
-                    return snapshot.data!.entries
-                        .map((entry) => PopupMenuItem<int>(
-                              value: entry.key,
-                              child: Text(entry.value),
-                            ))
-                        .toList();
+    if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
+      return FutureBuilder<List<dynamic>>(
+        future: _searchResults,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return const Center(child: Text('Error al cargar los resultados.'));
+          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No se encontraron resultados.'));
+          } else {
+            return ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: snapshot.data!.length,
+              itemBuilder: (context, index) {
+                final item = snapshot.data![index];
+                return ListTile(
+                  leading: Image.network(
+                    'https://image.tmdb.org/t/p/w185${item['poster_path']}',
+                    width: 50,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Icon(Icons.error),
+                  ),
+                  title: Text(item['title'] ?? item['name'] ?? 'Sin título'),
+                  subtitle: Text(item['overview'] ?? 'Sin descripción.'),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DetailScreen(
+                          id: item['id'],
+                          isMovie: true,
+                        ),
+                      ),
+                    );
                   },
                 );
-              }
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
+              },
+            );
+          }
+        },
+      );
+    } else {
+      return SingleChildScrollView(
         child: Column(
           children: [
-            if (_searchQuery.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  'Resultados para "$_searchQuery"',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
             const SizedBox(height: 20),
             _buildSectionHeader(context, 'Popular Movies'),
             FutureBuilder<List<dynamic>>(
@@ -201,8 +281,8 @@ class _MyHomePageState extends State<MyHomePage> {
             _buildGenreCarousels(isMovie: false),
           ],
         ),
-      ),
-    );
+      );
+    }
   }
 
   Widget _buildSectionHeader(BuildContext context, String title) {
@@ -215,6 +295,7 @@ class _MyHomePageState extends State<MyHomePage> {
             title,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
+                  color: Theme.of(context).textTheme.titleLarge?.color,
                 ),
           ),
           IconButton(
@@ -245,7 +326,10 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   Text(
                     entry.value,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).textTheme.titleMedium?.color,
+                        ),
                   ),
                   const SizedBox(height: 10),
                   FutureBuilder<List<dynamic>>(
