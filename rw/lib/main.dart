@@ -1,8 +1,15 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:rw/firebase_options.dart';
 import 'api_service.dart';
 import 'detail_screen.dart'; // Importar la clase DetailScreen correcta
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Inicializar Firebase antes de ejecutar la aplicación
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
@@ -359,7 +366,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Widget _buildCarousel(List<dynamic> items, {required bool isMovie}) {
-    final ScrollController _scrollController = ScrollController();
+    final ScrollController scrollController = ScrollController();
 
     return Container(
       color: Theme.of(context).scaffoldBackgroundColor,
@@ -367,7 +374,7 @@ class _MyHomePageState extends State<MyHomePage> {
       child: Stack(
         children: [
           ListView.separated(
-            controller: _scrollController,
+            controller: scrollController,
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: items.length,
@@ -446,8 +453,8 @@ class _MyHomePageState extends State<MyHomePage> {
             left: 0,
             top: 100,
             child: _buildNavigationButton(Icons.arrow_back, () {
-              _scrollController.animateTo(
-                _scrollController.offset - 300,
+              scrollController.animateTo(
+                scrollController.offset - 300,
                 duration: const Duration(milliseconds: 500),
                 curve: Curves.ease,
               );
@@ -457,8 +464,8 @@ class _MyHomePageState extends State<MyHomePage> {
             right: 0,
             top: 100,
             child: _buildNavigationButton(Icons.arrow_forward, () {
-              _scrollController.animateTo(
-                _scrollController.offset + 300,
+              scrollController.animateTo(
+                scrollController.offset + 300,
                 duration: const Duration(milliseconds: 500),
                 curve: Curves.ease,
               );

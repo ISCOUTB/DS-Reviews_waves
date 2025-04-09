@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1033143975541",
+    "project_id": "reviews-waves-86c01",
+    "storage_bucket": "reviews-waves-86c01.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1033143975541:android:af93bf04ea5ef8b687823c",
+        "android_client_info": {
+          "package_name": "com.example.rw"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1033143975541-fkjljga00v3oc40hth7ii1ouhpqdt129.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHLJut2pZd38siLJoq-LmJpoz3ydSZsN8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1033143975541-fkjljga00v3oc40hth7ii1ouhpqdt129.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
