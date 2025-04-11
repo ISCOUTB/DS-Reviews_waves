@@ -1,12 +1,12 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:rw/firebase_options.dart';
 import 'api_service.dart';
-import 'detail_screen.dart'; // Importar la clase DetailScreen correcta
+import 'detail_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Inicializar Firebase antes de ejecutar la aplicación
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -39,8 +39,8 @@ class _MyAppState extends State<MyApp> {
         scaffoldBackgroundColor: const Color(0xFFF4F4F7),
         cardColor: Colors.white,
         textTheme: const TextTheme(
-          titleMedium: TextStyle(color: Color(0xFF333333)), // Reemplaza bodyText1
-          bodyMedium: TextStyle(color: Color(0xFF6D6D6D)), // Reemplaza bodyText2
+          titleMedium: TextStyle(color: Color(0xFF333333)),
+          bodyMedium: TextStyle(color: Color(0xFF6D6D6D)),
         ),
       ),
       darkTheme: ThemeData(
@@ -49,11 +49,11 @@ class _MyAppState extends State<MyApp> {
         scaffoldBackgroundColor: const Color(0xFF1C1B29),
         cardColor: const Color(0xFF2F2A48),
         textTheme: const TextTheme(
-          titleMedium: TextStyle(color: Color(0xFFF4F4F4)), // Reemplaza bodyText1
-          bodyMedium: TextStyle(color: Color(0xFFC1B5E3)), // Reemplaza bodyText2
+          titleMedium: TextStyle(color: Color(0xFFF4F4F4)),
+          bodyMedium: TextStyle(color: Color(0xFFC1B5E3)),
         ),
       ),
-      themeMode: _themeMode, // Cambia automáticamente entre claro y oscuro
+      themeMode: _themeMode,
       home: GlobalScaffold(
         onToggleTheme: _toggleTheme,
         child: const MyHomePage(),
@@ -73,8 +73,23 @@ class GlobalScaffold extends StatefulWidget {
 }
 
 class _GlobalScaffoldState extends State<GlobalScaffold> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   final TextEditingController _searchController = TextEditingController();
+  User? _currentUser;
+  late Stream<User?> _authStateStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentUser = _auth.currentUser;
+    _authStateStream = FirebaseAuth.instance.authStateChanges();
+    _authStateStream.listen((User? user) {
+      setState(() {
+        _currentUser = user;
+      });
+    });
+  }
 
   void _onSearchSubmitted(String query) {
     if (query.isNotEmpty) {
@@ -89,6 +104,39 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
         ),
       );
     }
+  }
+
+  void _logout() async {
+    await _auth.signOut();
+    setState(() {
+      _currentUser = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sesión cerrada exitosamente')),
+    );
+  }
+
+  void _showUserInfo() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Información de Usuario'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Email: ${_currentUser?.email ?? "No disponible"}'),
+            Text('UID: ${_currentUser?.uid ?? "No disponible"}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -137,6 +185,43 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
               ),
               onPressed: widget.onToggleTheme,
             ),
+            if (_currentUser == null)
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  );
+                },
+                child: const Text(
+                  'Iniciar Sesión',
+                  style: TextStyle(color: Colors.white),
+                ),
+              )
+            else
+              PopupMenuButton<String>(
+                icon: const CircleAvatar(
+                  backgroundColor: Colors.white24,
+                  child: Icon(Icons.person, color: Colors.white),
+                ),
+                onSelected: (value) {
+                  if (value == 'Cerrar Sesión') {
+                    _logout();
+                  } else if (value == 'Ver Información') {
+                    _showUserInfo();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'Ver Información',
+                    child: Text('Ver Información'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'Cerrar Sesión',
+                    child: Text('Cerrar Sesión'),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -170,7 +255,7 @@ class _MyHomePageState extends State<MyHomePage> {
   late Future<List<dynamic>> _moviesFuture;
   late Future<List<dynamic>> _tvShowsFuture;
   late Future<Map<int, String>> _genresFuture;
-  Map<int, String> _genreMap = {}; // Mapa para almacenar géneros
+  Map<int, String> _genreMap = {};
 
   @override
   void initState() {
@@ -190,7 +275,7 @@ class _MyHomePageState extends State<MyHomePage> {
     try {
       final movieGenres = await _apiService.fetchMovieGenres();
       final tvGenres = await _apiService.fetchTVGenres();
-      _genreMap = {...movieGenres, ...tvGenres}; // Combinar géneros
+      _genreMap = {...movieGenres, ...tvGenres};
       return _genreMap;
     } catch (e) {
       print('Error fetching genres: $e');
@@ -370,7 +455,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     return Container(
       color: Theme.of(context).scaffoldBackgroundColor,
-      height: 280, // Altura fija para las tarjetas
+      height: 280,
       child: Stack(
         children: [
           ListView.separated(
@@ -395,7 +480,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   );
                 },
                 child: Container(
-                  width: 180, // Ancho fijo para las tarjetas
+                  width: 180,
                   decoration: BoxDecoration(
                     color: Theme.of(context).cardColor,
                     borderRadius: BorderRadius.circular(10),
@@ -487,6 +572,332 @@ class _MyHomePageState extends State<MyHomePage> {
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  bool _isPasswordVisible = false;
+  bool _isLoading = false;
+
+  Future<void> _login() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Inicio de sesión exitoso')),
+      );
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1C1B29),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 350,
+                padding: const EdgeInsets.all(24.0),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Iniciar Sesión',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF333333),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.email),
+                        hintText: 'Correo electrónico',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: !_isPasswordVisible,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.lock),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isPasswordVisible = !_isPasswordVisible;
+                            });
+                          },
+                        ),
+                        hintText: 'Contraseña',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _login,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4A90E2),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text(
+                                'Iniciar Sesión',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                        );
+                      },
+                      child: const Text('¿No tienes cuenta? Regístrate'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  bool _isLoading = false;
+
+  Future<void> _register() async {
+    if (_passwordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Las contraseñas no coinciden')),
+      );
+      return;
+    }
+    
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      await _auth.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      
+      // Actualizar el perfil del usuario con el nombre
+      if (_nameController.text.isNotEmpty) {
+        await _auth.currentUser?.updateDisplayName(_nameController.text.trim());
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Registro exitoso')),
+      );
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1C1B29),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 350,
+                padding: const EdgeInsets.all(24.0),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Registrarse',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF333333),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.person),
+                        hintText: 'Nombre completo',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.email),
+                        hintText: 'Correo electrónico',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.lock),
+                        hintText: 'Contraseña',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _confirmPasswordController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        hintText: 'Confirmar contraseña',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _register,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4A90E2),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text(
+                                'Crear Cuenta',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Ya tengo una cuenta. Iniciar sesión'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
