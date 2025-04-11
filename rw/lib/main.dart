@@ -78,6 +78,9 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
   final TextEditingController _searchController = TextEditingController();
   User? _currentUser;
   late Stream<User?> _authStateStream;
+  final ApiService _apiService = ApiService();
+  Map<int, String> _genreMap = {};
+  bool _loadingGenres = true;
 
   @override
   void initState() {
@@ -89,6 +92,23 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
         _currentUser = user;
       });
     });
+    _loadGenres();
+  }
+
+  Future<void> _loadGenres() async {
+    try {
+      final movieGenres = await _apiService.fetchMovieGenres();
+      final tvGenres = await _apiService.fetchTVGenres();
+      setState(() {
+        _genreMap = {...movieGenres, ...tvGenres};
+        _loadingGenres = false;
+      });
+    } catch (e) {
+      print('Error loading genres: $e');
+      setState(() {
+        _loadingGenres = false;
+      });
+    }
   }
 
   void _onSearchSubmitted(String query) {
@@ -104,6 +124,65 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
         ),
       );
     }
+  }
+
+  void _showGenreFilterDialog() {
+    if (_loadingGenres) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cargando géneros...')),
+      );
+      return;
+    }
+
+    if (_genreMap.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudieron cargar los géneros')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Filtrar por Género'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _genreMap.length,
+            itemBuilder: (context, index) {
+              final entry = _genreMap.entries.elementAt(index);
+              return ListTile(
+                title: Text(entry.value),
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToFilteredResults(entry.key, entry.value);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToFilteredResults(int genreId, String genreName) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            title: Text('Películas de $genreName'),
+          ),
+          body: MyHomePage(filteredGenreId: genreId, isMovie: true),
+        ),
+      ),
+    );
   }
 
   void _logout() async {
@@ -178,6 +257,12 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
               ),
             ),
             IconButton(
+              icon: const Icon(Icons.filter_list),
+              tooltip: 'Filtrar por género',
+              onPressed: _showGenreFilterDialog,
+              color: Colors.white,
+            ),
+            IconButton(
               icon: Icon(
                 Theme.of(context).brightness == Brightness.dark
                     ? Icons.light_mode
@@ -242,8 +327,10 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
 
 class MyHomePage extends StatefulWidget {
   final String? searchQuery;
+  final int? filteredGenreId;
+  final bool? isMovie;
 
-  const MyHomePage({super.key, this.searchQuery});
+  const MyHomePage({super.key, this.searchQuery, this.filteredGenreId, this.isMovie});
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -251,7 +338,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final ApiService _apiService = ApiService();
-  late Future<List<dynamic>> _searchResults;
+  late Future<List<dynamic>> _contentFuture;
   late Future<List<dynamic>> _moviesFuture;
   late Future<List<dynamic>> _tvShowsFuture;
   late Future<Map<int, String>> _genresFuture;
@@ -265,9 +352,15 @@ class _MyHomePageState extends State<MyHomePage> {
     _tvShowsFuture = _apiService.fetchTVShows();
 
     if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
-      _searchResults = _apiService.searchMovies(widget.searchQuery!);
+      _contentFuture = _apiService.searchMovies(widget.searchQuery!);
+    } else if (widget.filteredGenreId != null) {
+      if (widget.isMovie == true) {
+        _contentFuture = _apiService.fetchMoviesByGenre(widget.filteredGenreId!);
+      } else {
+        _contentFuture = _apiService.fetchTVShowsByGenre(widget.filteredGenreId!);
+      }
     } else {
-      _searchResults = _apiService.fetchMovies();
+      _contentFuture = _apiService.fetchMovies();
     }
   }
 
@@ -290,9 +383,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
+    if ((widget.searchQuery != null && widget.searchQuery!.isNotEmpty) || 
+        widget.filteredGenreId != null) {
       return FutureBuilder<List<dynamic>>(
-        future: _searchResults,
+        future: _contentFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -322,7 +416,9 @@ class _MyHomePageState extends State<MyHomePage> {
                       MaterialPageRoute(
                         builder: (context) => DetailScreen(
                           id: item['id'],
-                          isMovie: true,
+                          isMovie: widget.filteredGenreId != null
+                              ? widget.isMovie ?? true
+                              : true,
                         ),
                       ),
                     );
