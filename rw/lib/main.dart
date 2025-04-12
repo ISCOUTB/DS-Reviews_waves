@@ -343,13 +343,29 @@ class _MyHomePageState extends State<MyHomePage> {
   late Future<List<dynamic>> _tvShowsFuture;
   late Future<Map<int, String>> _genresFuture;
   Map<int, String> _genreMap = {};
+  bool _genresLoaded = false;
 
   @override
   void initState() {
     super.initState();
+    _loadAllData();
+  }
+
+  Future<void> _loadAllData() async {
     _genresFuture = _fetchGenres();
     _moviesFuture = _apiService.fetchMovies();
     _tvShowsFuture = _apiService.fetchTVShows();
+
+    // Precargar los géneros antes de mostrar cualquier contenido
+    try {
+      _genreMap = await _genresFuture;
+      _genresLoaded = true;
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error precargando géneros: $e');
+    }
 
     if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
       _contentFuture = _apiService.searchMovies(widget.searchQuery!);
@@ -364,12 +380,39 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  @override
+  void didUpdateWidget(covariant MyHomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.searchQuery != oldWidget.searchQuery ||
+        widget.filteredGenreId != oldWidget.filteredGenreId) {
+      setState(() {
+        if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
+          _contentFuture = _apiService.searchMovies(widget.searchQuery!);
+        } else if (widget.filteredGenreId != null) {
+          if (widget.isMovie == true) {
+            _contentFuture = _apiService.fetchMoviesByGenre(widget.filteredGenreId!);
+          } else {
+            _contentFuture = _apiService.fetchTVShowsByGenre(widget.filteredGenreId!);
+          }
+        } else {
+          _contentFuture = _apiService.fetchMovies();
+        }
+      });
+    }
+  }
+
   Future<Map<int, String>> _fetchGenres() async {
     try {
       final movieGenres = await _apiService.fetchMovieGenres();
       final tvGenres = await _apiService.fetchTVGenres();
-      _genreMap = {...movieGenres, ...tvGenres};
-      return _genreMap;
+      
+      if (mounted) {
+        setState(() {
+          _genreMap = {...movieGenres, ...tvGenres};
+          _genresLoaded = true;
+        });
+      }
+      return {...movieGenres, ...tvGenres};
     } catch (e) {
       print('Error fetching genres: $e');
       return {};
@@ -378,7 +421,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String _getGenres(List<int> genreIds) {
     if (genreIds.isEmpty) return "Sin categoría";
-    return genreIds.map((id) => _genreMap[id] ?? "Desconocido").join(", ");
+    if (!_genresLoaded || _genreMap.isEmpty) return "Cargando...";
+    return genreIds.map((id) => _genreMap[id] ?? "Sin categoría").join(", ");
   }
 
   @override
@@ -838,8 +882,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _confirmPasswordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   bool _isLoading = false;
+  
+  // Variable para almacenar el email temporal y el usuario no confirmado
+  String? _unverifiedEmail;
+  UserCredential? _unverifiedUser;
+  bool _showVerificationCodeScreen = false;
 
-  Future<void> _register() async {
+  Future<void> _requestVerificationCode() async {
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Las contraseñas no coinciden')),
@@ -850,22 +899,68 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() {
       _isLoading = true;
     });
+    
     try {
-      await _auth.createUserWithEmailAndPassword(
+      // Almacenar el email para usarlo en la verificación
+      _unverifiedEmail = _emailController.text.trim();
+      
+      // Iniciar el proceso de registro pero sin completarlo
+      _unverifiedUser = await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
       
+      // Enviar email de verificación
+      await _unverifiedUser!.user!.sendEmailVerification();
+      
+      setState(() {
+        _showVerificationCodeScreen = true;
+        _isLoading = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Se ha enviado un código de verificación a tu correo electrónico'),
+        ),
+      );
+      
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    }
+  }
+  
+  Future<void> _completeRegistration() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
       // Actualizar el perfil del usuario con el nombre
       if (_nameController.text.isNotEmpty) {
         await _auth.currentUser?.updateDisplayName(_nameController.text.trim());
       }
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Registro exitoso')),
-      );
-      if (mounted) {
-        Navigator.pop(context);
+      // Esperar a que el usuario actualice la verificación de email
+      await _auth.currentUser?.reload();
+      
+      if (_auth.currentUser?.emailVerified == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Registro completado con éxito')),
+        );
+        
+        if (mounted) {
+          Navigator.pop(context);
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Por favor, verifica tu correo electrónico')),
+        );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -878,6 +973,177 @@ class _RegisterScreenState extends State<RegisterScreen> {
         });
       }
     }
+  }
+  
+  Widget _buildRegistrationForm() {
+    return Column(
+      children: [
+        const Text(
+          'Registrarse',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF333333),
+          ),
+        ),
+        const SizedBox(height: 20),
+        TextField(
+          controller: _nameController,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.person),
+            hintText: 'Nombre completo',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.email),
+            hintText: 'Correo electrónico',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _passwordController,
+          obscureText: true,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.lock),
+            hintText: 'Contraseña',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _confirmPasswordController,
+          obscureText: true,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.lock_outline),
+            hintText: 'Confirmar contraseña',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _requestVerificationCode,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4A90E2),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: _isLoading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Text(
+                    'Enviar código de verificación',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+          },
+          child: const Text('Ya tengo una cuenta. Iniciar sesión'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerificationScreen() {
+    return Column(
+      children: [
+        const Text(
+          'Verificación de correo',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF333333),
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Por favor, verifica tu correo electrónico. Hemos enviado un enlace de verificación a tu correo. Haz clic en el enlace para verificar tu cuenta.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, color: Color(0xFF6D6D6D)),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          'Correo: $_unverifiedEmail',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF333333),
+          ),
+        ),
+        const SizedBox(height: 30),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _completeRegistration,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4A90E2),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: _isLoading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Text(
+                    'He verificado mi correo',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: _isLoading ? null : () {
+              _auth.currentUser?.sendEmailVerification();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Se ha reenviado el correo de verificación')),
+              );
+            },
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              side: const BorderSide(color: Color(0xFF4A90E2)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Reenviar correo de verificación',
+              style: TextStyle(fontSize: 16, color: Color(0xFF4A90E2)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
+          onPressed: () {
+            setState(() {
+              _showVerificationCodeScreen = false;
+            });
+          },
+          child: const Text('Volver'),
+        ),
+      ],
+    );
   }
 
   @override
@@ -904,92 +1170,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'Registrarse',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF333333),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.person),
-                        hintText: 'Nombre completo',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.email),
-                        hintText: 'Correo electrónico',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.lock),
-                        hintText: 'Contraseña',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _confirmPasswordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        hintText: 'Confirmar contraseña',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _register,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4A90E2),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: _isLoading
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : const Text(
-                                'Crear Cuenta',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      child: const Text('Ya tengo una cuenta. Iniciar sesión'),
-                    ),
-                  ],
-                ),
+                child: _showVerificationCodeScreen
+                    ? _buildVerificationScreen()
+                    : _buildRegistrationForm(),
               ),
             ],
           ),
