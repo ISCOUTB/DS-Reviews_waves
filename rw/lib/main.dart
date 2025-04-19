@@ -2,8 +2,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:rw/firebase_options.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:intl/intl.dart';
 import 'api_service.dart';
 import 'detail_screen.dart';
+import 'perfil_screen.dart'; // Importando la pantalla de perfil
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -294,12 +297,21 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
                     _logout();
                   } else if (value == 'Ver Información') {
                     _showUserInfo();
+                  } else if (value == 'Perfil') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const PerfilScreen()),
+                    );
                   }
                 },
                 itemBuilder: (context) => [
                   const PopupMenuItem(
                     value: 'Ver Información',
                     child: Text('Ver Información'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'Perfil',
+                    child: Text('Perfil'),
                   ),
                   const PopupMenuItem(
                     value: 'Cerrar Sesión',
@@ -876,17 +888,35 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final TextEditingController _nameController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _nombreCompletoController = TextEditingController();
+  final TextEditingController _usuarioController = TextEditingController();
+  final TextEditingController _descripcionController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
+  
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final _database = FirebaseDatabase.instanceFor(
+    app: FirebaseDatabase.instance.app,
+    databaseURL: 'https://reviews-waves-86c01-default-rtdb.firebaseio.com',
+  ).ref();
+  
+  DateTime? _fechaNacimiento;
+  String? _generoSeleccionado;
   bool _isLoading = false;
   
   // Variable para almacenar el email temporal y el usuario no confirmado
   String? _unverifiedEmail;
   UserCredential? _unverifiedUser;
   bool _showVerificationCodeScreen = false;
+
+  // Lista de géneros disponibles
+  final List<String> _opcionesGenero = [
+    'Masculino',
+    'Femenino',
+    'Otro'
+  ];
 
   Future<void> _requestVerificationCode() async {
     if (_passwordController.text != _confirmPasswordController.text) {
@@ -913,6 +943,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       // Enviar email de verificación
       await _unverifiedUser!.user!.sendEmailVerification();
       
+      // Si tenemos datos de perfil, los guardamos en la base de datos
+      if (_unverifiedUser != null && _unverifiedUser!.user != null) {
+        _guardarPerfilUsuario(_unverifiedUser!.user!.uid);
+      }
+      
       setState(() {
         _showVerificationCodeScreen = true;
         _isLoading = false;
@@ -935,6 +970,63 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
   
+  // Guardar los datos de perfil en Firebase Realtime Database
+  Future<void> _guardarPerfilUsuario(String uid) async {
+    try {
+      // Solo guardar los campos que tengan valor
+      final Map<String, dynamic> perfilData = {};
+      
+      if (_nombreCompletoController.text.isNotEmpty) {
+        perfilData['nombreCompleto'] = _nombreCompletoController.text.trim();
+      }
+      
+      if (_usuarioController.text.isNotEmpty) {
+        perfilData['usuario'] = _usuarioController.text.trim();
+      }
+      
+      if (_descripcionController.text.isNotEmpty) {
+        perfilData['descripcion'] = _descripcionController.text.trim();
+      }
+      
+      if (_fechaNacimiento != null) {
+        perfilData['fechaNacimiento'] = _fechaNacimiento!.toIso8601String().split('T')[0];
+      }
+      
+      if (_generoSeleccionado != null) {
+        perfilData['genero'] = _generoSeleccionado;
+      }
+      
+      // Solo guardar si hay al menos un campo con valor
+      if (perfilData.isNotEmpty) {
+        await _database.child('usuarios/$uid/perfil').set(perfilData);
+      }
+    } catch (e) {
+      print('Error al guardar el perfil: $e');
+      // No mostramos el error al usuario para no interrumpir el flujo de registro
+    }
+  }
+  
+  // Seleccionar fecha de nacimiento
+  Future<void> _seleccionarFecha() async {
+    final DateTime fechaActual = DateTime.now();
+    final DateTime fechaMinima = DateTime(fechaActual.year - 100, 1, 1);
+    final DateTime fechaMaxima = DateTime(fechaActual.year, fechaActual.month, fechaActual.day);
+    
+    final DateTime? fechaSeleccionada = await showDatePicker(
+      context: context,
+      initialDate: DateTime(fechaActual.year - 18, fechaActual.month, fechaActual.day), // Default a 18 años
+      firstDate: fechaMinima,
+      lastDate: fechaMaxima,
+      helpText: 'Selecciona tu fecha de nacimiento',
+      cancelText: 'Cancelar',
+      confirmText: 'Aceptar',
+    );
+    
+    if (fechaSeleccionada != null) {
+      setState(() => _fechaNacimiento = fechaSeleccionada);
+    }
+  }
+  
   Future<void> _completeRegistration() async {
     setState(() {
       _isLoading = true;
@@ -942,8 +1034,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     
     try {
       // Actualizar el perfil del usuario con el nombre
-      if (_nameController.text.isNotEmpty) {
-        await _auth.currentUser?.updateDisplayName(_nameController.text.trim());
+      if (_nombreCompletoController.text.isNotEmpty) {
+        await _auth.currentUser?.updateDisplayName(_nombreCompletoController.text.trim());
       }
       
       // Esperar a que el usuario actualice la verificación de email
@@ -976,91 +1068,194 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
   
   Widget _buildRegistrationForm() {
-    return Column(
-      children: [
-        const Text(
-          'Registrarse',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF333333),
-          ),
-        ),
-        const SizedBox(height: 20),
-        TextField(
-          controller: _nameController,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.person),
-            hintText: 'Nombre completo',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+    return Form(
+      key: _formKey,
+      child: Column(
+        children: [
+          const Text(
+            'Registrarse',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF333333),
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.email),
-            hintText: 'Correo electrónico',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _passwordController,
-          obscureText: true,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.lock),
-            hintText: 'Contraseña',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _confirmPasswordController,
-          obscureText: true,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.lock_outline),
-            hintText: 'Confirmar contraseña',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _requestVerificationCode,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF4A90E2),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
+          const SizedBox(height: 20),
+          
+          // Nombre completo
+          TextField(
+            controller: _nombreCompletoController,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.person),
+              hintText: 'Nombre completo',
+              border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: _isLoading
-                ? const CircularProgressIndicator(color: Colors.white)
-                : const Text(
-                    'Enviar código de verificación',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
           ),
-        ),
-        const SizedBox(height: 16),
-        TextButton(
-          onPressed: () {
-            Navigator.pop(context);
-          },
-          child: const Text('Ya tengo una cuenta. Iniciar sesión'),
-        ),
-      ],
+          const SizedBox(height: 16),
+          
+          // Nombre de usuario
+          TextField(
+            controller: _usuarioController,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.alternate_email),
+              hintText: 'Nombre de usuario',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Email - campo obligatorio
+          TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.email),
+              hintText: 'Correo electrónico *',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Contraseña - campo obligatorio
+          TextField(
+            controller: _passwordController,
+            obscureText: true,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.lock),
+              hintText: 'Contraseña *',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Confirmar contraseña - campo obligatorio
+          TextField(
+            controller: _confirmPasswordController,
+            obscureText: true,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.lock_outline),
+              hintText: 'Confirmar contraseña *',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Fecha de nacimiento (opcional)
+          GestureDetector(
+            onTap: _seleccionarFecha,
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: 'Fecha de nacimiento',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.calendar_today),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _fechaNacimiento == null
+                        ? 'Selecciona tu fecha de nacimiento'
+                        : DateFormat('dd/MM/yyyy').format(_fechaNacimiento!),
+                    style: TextStyle(
+                      color: _fechaNacimiento == null
+                          ? Colors.grey
+                          : Colors.black,
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    color: _fechaNacimiento == null ? Colors.grey : Colors.blue,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Género (opcional)
+          DropdownButtonFormField<String>(
+            value: _generoSeleccionado,
+            decoration: InputDecoration(
+              labelText: 'Género',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              prefixIcon: const Icon(Icons.people),
+            ),
+            hint: const Text('Selecciona tu género'),
+            onChanged: (String? newValue) {
+              setState(() {
+                _generoSeleccionado = newValue;
+              });
+            },
+            items: _opcionesGenero.map((String genero) {
+              return DropdownMenuItem<String>(
+                value: genero,
+                child: Text(genero),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+          
+          // Descripción (opcional)
+          TextField(
+            controller: _descripcionController,
+            maxLines: 3,
+            maxLength: 150,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.description),
+              hintText: 'Descripción (opcional)',
+              helperText: 'Máximo 150 caracteres',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          // Botón para enviar verificación
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _requestVerificationCode,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4A90E2),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text(
+                      'Enviar código de verificación',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Enlace para ir a inicio de sesión
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text('Ya tengo una cuenta. Iniciar sesión'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1157,7 +1352,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 350,
+                width: 450, // Aumenté el ancho para acomodar más campos
                 padding: const EdgeInsets.all(24.0),
                 decoration: BoxDecoration(
                   color: Colors.white,
