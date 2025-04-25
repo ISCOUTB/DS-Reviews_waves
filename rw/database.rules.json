@@ -2,11 +2,12 @@
   "rules": {
     "usuarios": {
       "$uid": {
+        "favoritos": {
+          ".indexOn": ["id"]
+        },
         ".read": "$uid === auth.uid",
         ".write": "$uid === auth.uid"
       }
-    },
-    ".read": "auth != null",
-    ".write": "auth != null"
+    }
   }
 }
