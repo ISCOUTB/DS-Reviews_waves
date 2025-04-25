@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 import 'api_service.dart';
+
+// Inicializar logger para la pantalla de género
+final log = Logger('GenreScreen');
 
 class GenreScreen extends StatefulWidget {
   final String genre;
@@ -33,7 +37,7 @@ class _GenreScreenState extends State<GenreScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print('Error fetching items by genre: $e');
+      log.info('Error fetching items by genre: $e');
       setState(() {
         _isLoading = false;
       });

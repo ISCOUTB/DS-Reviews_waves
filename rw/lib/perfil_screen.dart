@@ -2,9 +2,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:logging/logging.dart';
+
+// Inicializar logger para la pantalla de perfil
+final log = Logger('PerfilScreen');
 
 class PerfilScreen extends StatefulWidget {
-  const PerfilScreen({Key? key}) : super(key: key);
+  const PerfilScreen({super.key});
 
   @override
   State<PerfilScreen> createState() => _PerfilScreenState();
@@ -27,7 +31,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
   String? _generoSeleccionado;
   bool _isLoading = true;
   bool _isSaving = false;
-  Map<String, String> _usuariosExistentes = {};
+  final Map<String, String> _usuariosExistentes = {};
   String? _usuarioOriginal;
   
   final List<String> _opcionesGenero = [
@@ -248,7 +252,12 @@ class _PerfilScreenState extends State<PerfilScreen> {
                         children: [
                           CircleAvatar(
                             radius: 60,
-                            backgroundColor: Theme.of(context).primaryColor.withOpacity(0.3),
+                            backgroundColor: Color.fromRGBO(
+                              Theme.of(context).primaryColor.r.round(),
+                              Theme.of(context).primaryColor.g.round(),
+                              Theme.of(context).primaryColor.b.round(),
+                              0.3
+                            ),
                             child: const Icon(
                               Icons.person,
                               size: 80,

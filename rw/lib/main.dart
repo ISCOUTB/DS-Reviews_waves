@@ -4,11 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:rw/firebase_options.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
+import 'package:logging/logging.dart';
 import 'api_service.dart';
 import 'detail_screen.dart';
 import 'perfil_screen.dart'; // Importando la pantalla de perfil
 
+// Inicializar logger global
+final log = Logger('ReviewsWaves');
+
 Future<void> main() async {
+  // Configurando el logger
+  Logger.root.level = Level.INFO;
+  Logger.root.onRecord.listen((record) {
+    // ignore: avoid_print
+    print('${record.level.name}: ${record.time}: ${record.message}');
+  });
+  
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -102,12 +113,14 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
     try {
       final movieGenres = await _apiService.fetchMovieGenres();
       final tvGenres = await _apiService.fetchTVGenres();
+      if (!mounted) return;
       setState(() {
         _genreMap = {...movieGenres, ...tvGenres};
         _loadingGenres = false;
       });
     } catch (e) {
-      print('Error loading genres: $e');
+      log.info('Error loading genres: $e');
+      if (!mounted) return;
       setState(() {
         _loadingGenres = false;
       });
@@ -190,6 +203,7 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
 
   void _logout() async {
     await _auth.signOut();
+    if (!mounted) return;
     setState(() {
       _currentUser = null;
     });
@@ -376,7 +390,7 @@ class _MyHomePageState extends State<MyHomePage> {
         setState(() {});
       }
     } catch (e) {
-      print('Error precargando géneros: $e');
+      log.info('Error precargando géneros: $e');
     }
 
     if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
@@ -426,7 +440,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
       return {...movieGenres, ...tvGenres};
     } catch (e) {
-      print('Error fetching genres: $e');
+      log.info('Error fetching genres: $e');
       return {};
     }
   }
@@ -638,9 +652,9 @@ class _MyHomePageState extends State<MyHomePage> {
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
+                        color: Color.fromRGBO(0, 0, 0, 0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
@@ -720,7 +734,7 @@ class _MyHomePageState extends State<MyHomePage> {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
+          color: Color.fromRGBO(0, 0, 0, 0.5),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white),
@@ -752,6 +766,7 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Inicio de sesión exitoso')),
       );
@@ -789,7 +804,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Color.fromRGBO(0, 0, 0, 0.1),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -948,6 +963,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _guardarPerfilUsuario(_unverifiedUser!.user!.uid);
       }
       
+      if (!mounted) return;
+      
       setState(() {
         _showVerificationCodeScreen = true;
         _isLoading = false;
@@ -1001,7 +1018,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         await _database.child('usuarios/$uid/perfil').set(perfilData);
       }
     } catch (e) {
-      print('Error al guardar el perfil: $e');
+      log.info('Error al guardar el perfil: $e');
       // No mostramos el error al usuario para no interrumpir el flujo de registro
     }
   }
@@ -1041,20 +1058,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
       // Esperar a que el usuario actualice la verificación de email
       await _auth.currentUser?.reload();
       
+      if (!mounted) return;
+      
       if (_auth.currentUser?.emailVerified == true) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Registro completado con éxito')),
         );
         
-        if (mounted) {
-          Navigator.pop(context);
-        }
+        Navigator.pop(context);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Por favor, verifica tu correo electrónico')),
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: ${e.toString()}')),
       );
@@ -1359,7 +1377,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Color.fromRGBO(0, 0, 0, 0.1),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),

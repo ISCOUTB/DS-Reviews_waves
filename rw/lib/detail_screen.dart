@@ -83,7 +83,7 @@ class DetailScreenState extends State<DetailScreen> {
         // Efecto de difuminado
         Positioned.fill(
           child: Container(
-            color: Colors.black.withOpacity(0.6), // Más transparencia
+            color: Color.fromRGBO(0, 0, 0, 0.6), // Más transparencia
           ),
         ),
         // Contenido principal
