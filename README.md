@@ -1,6 +1,7 @@
-# Reviews Waves
+![Imagen de WhatsApp 2025-03-21 a las 11 38 33_a4c9ae09](https://github.com/user-attachments/assets/27fca6f7-1889-45e3-aa38-6467eab3bba0)# Reviews Waves
 
 ![Logo Reviews Waves](assets/readme/logo.jpg)
+
 
 ---
 
