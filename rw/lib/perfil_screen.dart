@@ -37,7 +37,6 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
   // Estados de carga
   bool _isLoading = true;
   bool _isSaving = false;
-  bool _isShowingConfetti = false;
   
   // Avatar seleccionado actualmente
   String _selectedAvatar = '';
@@ -122,6 +121,11 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
     _tabController.addListener(_handleTabChange);
   }
 
+  // Convertir valores de opacidad (0.0-1.0) a valores alpha (0-255)
+  int _opacityToAlpha(double opacity) {
+    return (opacity * 255).round();
+  }
+
   // Generamos listas de avatares para todas las categorías
   void _generateAvatarsForCategories() {
     final random = Random();
@@ -191,6 +195,8 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       if (_currentUser != null) {
         DataSnapshot snapshot = await _database.child('usuarios/${_currentUser!.uid}/perfil').get();
         
+        if (!mounted) return;
+        
         if (snapshot.exists) {
           Map<String, dynamic> data = Map<String, dynamic>.from(snapshot.value as Map);
           setState(() {
@@ -236,16 +242,15 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       }
     } catch (e) {
       log.severe('Error al cargar datos del usuario: $e');
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _userData = {};
         _selectedAvatar = _avatarsByCategory['Profesionales']![0];
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar datos: $e')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cargar datos: $e')),
+      );
     }
   }
   
@@ -261,6 +266,8 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       // Conteo de favoritos
       DataSnapshot favoritesSnapshot = await _database.child('usuarios/${_currentUser!.uid}/favoritos').get();
       final int favoritesCount = favoritesSnapshot.exists ? (favoritesSnapshot.value as Map).length : 0;
+      
+      if (!mounted) return;
       
       // Guardamos los conteos en userData
       setState(() {
@@ -285,6 +292,8 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
     
     try {
       DataSnapshot snapshot = await _database.child('usuarios/${_currentUser!.uid}/resenas').get();
+      
+      if (!mounted) return;
       
       List<Map<String, dynamic>> reviews = [];
       
@@ -312,6 +321,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       });
     } catch (e) {
       log.warning('Error al cargar reseñas del usuario: $e');
+      if (!mounted) return;
       setState(() {
         _isLoadingReviews = false;
       });
@@ -328,6 +338,8 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
     
     try {
       DataSnapshot snapshot = await _database.child('usuarios/${_currentUser!.uid}/favoritos').get();
+      
+      if (!mounted) return;
       
       List<Map<String, dynamic>> favorites = [];
       
@@ -348,6 +360,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       });
     } catch (e) {
       log.warning('Error al cargar favoritos del usuario: $e');
+      if (!mounted) return;
       setState(() {
         _isLoadingFavorites = false;
       });
@@ -374,6 +387,8 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       // Simulamos un pequeño delay para que se aprecie el efecto shimmer
       await Future.delayed(const Duration(milliseconds: 800));
       
+      if (!mounted) return;
+      
       setState(() {
         _userData = {..._userData, ...updatedData};
         _isSaving = false;
@@ -382,14 +397,9 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       // Mostramos el efecto de confetti
       _confettiController.play();
       
-      setState(() {
-        _isShowingConfetti = true;
-      });
-      
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) {
           setState(() {
-            _isShowingConfetti = false;
             _isProfileShimmering = false; // Desactivamos el shimmer
           });
         }
@@ -400,6 +410,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       );
     } catch (e) {
       log.severe('Error al guardar datos del usuario: $e');
+      if (!mounted) return;
       setState(() {
         _isSaving = false;
         _isProfileShimmering = false; // Desactivamos el shimmer en caso de error
@@ -431,6 +442,8 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       // Simulamos una pequeña espera para apreciar el efecto shimmer
       await Future.delayed(const Duration(milliseconds: 600));
       
+      if (!mounted) return;
+      
       setState(() {
         _userData = {..._userData, 'avatarUrl': _selectedAvatar};
         _isAvatarShimmering = false; // Desactivamos el efecto shimmer
@@ -441,6 +454,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       );
     } catch (e) {
       log.severe('Error al guardar avatar: $e');
+      if (!mounted) return;
       setState(() {
         _isAvatarShimmering = false; // Desactivamos el shimmer en caso de error
       });
@@ -540,7 +554,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                   child: Material(
                     elevation: 8,
                     shape: const CircleBorder(),
-                    shadowColor: Theme.of(context).primaryColor.withOpacity(0.4),
+                    shadowColor: Theme.of(context).primaryColor.withAlpha(_opacityToAlpha(0.4)),
                     child: CircleAvatar(
                       radius: 60,
                       backgroundColor: Colors.grey[300],
@@ -611,7 +625,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                       ),
                     ),
                     selected: isSelected,
-                    selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                    selectedColor: Theme.of(context).primaryColor.withAlpha(_opacityToAlpha(0.2)),
                     backgroundColor: Theme.of(context).brightness == Brightness.dark
                         ? Colors.grey[800]
                         : Colors.grey[200],
@@ -678,7 +692,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                         boxShadow: isSelected 
                             ? [
                                 BoxShadow(
-                                  color: Theme.of(context).primaryColor.withOpacity(0.3),
+                                  color: Theme.of(context).primaryColor.withAlpha(_opacityToAlpha(0.3)),
                                   blurRadius: 8,
                                   spreadRadius: 1,
                                 ),
@@ -750,7 +764,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                   backgroundColor: Theme.of(context).primaryColor,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   elevation: 4,
-                  shadowColor: Theme.of(context).primaryColor.withOpacity(0.5),
+                  shadowColor: Theme.of(context).primaryColor.withAlpha(_opacityToAlpha(0.5)),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -765,7 +779,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                 ),
               ).animate()
                .fadeIn(duration: 300.ms)
-               .shimmer(duration: 1200.ms, color: Colors.white.withOpacity(0.4)),
+               .shimmer(duration: 1200.ms, color: Colors.white.withAlpha(_opacityToAlpha(0.4))),
             ),
           ),
         ],
@@ -821,7 +835,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                                 Shadow(
                                   offset: const Offset(1, 1),
                                   blurRadius: 3.0,
-                                  color: Colors.black.withOpacity(0.5),
+                                  color: Colors.black.withAlpha(_opacityToAlpha(0.5)),
                                 ),
                               ],
                             ),
@@ -964,32 +978,10 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                   ),
                 ),
           
-          // Animación de confetti cuando se actualiza el perfil
-          if (_isShowingConfetti)
-            Align(
-              alignment: Alignment.topCenter,
-              child: ConfettiWidget(
-                confettiController: _confettiController,
-                blastDirection: pi / 2, // hacia abajo
-                maxBlastForce: 5,
-                minBlastForce: 2,
-                emissionFrequency: 0.05,
-                numberOfParticles: 20,
-                gravity: 0.2,
-                colors: const [
-                  Colors.green,
-                  Colors.blue,
-                  Colors.pink,
-                  Colors.orange,
-                  Colors.purple
-                ],
-              ),
-            ),
-          
           // Indicador de carga al guardar
           if (_isSaving)
             Container(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withAlpha(_opacityToAlpha(0.3)),
               child: const Center(
                 child: CircularProgressIndicator(),
               ),

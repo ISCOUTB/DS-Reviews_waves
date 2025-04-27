@@ -4,6 +4,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:rw/widgets/shimmer_loading.dart';
+import 'package:shimmer/shimmer.dart';
 
 class FavoritesGrid extends StatelessWidget {
   final List<Map<String, dynamic>> favorites;
@@ -27,11 +28,12 @@ class FavoritesGrid extends StatelessWidget {
       return _buildEmptyState();
     }
 
-    return MasonryGridView.count(
-      padding: const EdgeInsets.all(16),
-      crossAxisCount: 2,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
+    // Aumentamos a 5 columnas para hacer las imágenes aún más pequeñas
+    return AlignedGridView.count(
+      padding: const EdgeInsets.all(4),
+      crossAxisCount: 5, // Aumentado a 5 columnas
+      mainAxisSpacing: 4, // Reducido el espaciado
+      crossAxisSpacing: 4, // Reducido el espaciado
       itemCount: favorites.length,
       itemBuilder: (context, index) {
         final movie = favorites[index];
@@ -44,13 +46,13 @@ class FavoritesGrid extends StatelessWidget {
     return ShimmerLoading(
       isLoading: true,
       child: MasonryGridView.count(
-        padding: const EdgeInsets.all(16),
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        itemCount: 6,
+        padding: const EdgeInsets.all(4),
+        crossAxisCount: 5, // También aumentamos las columnas en el estado de carga
+        mainAxisSpacing: 4,
+        crossAxisSpacing: 4,
+        itemCount: 15, // Aumentamos el número para mostrar más elementos en carga
         itemBuilder: (context, index) {
-          final height = index % 3 == 0 ? 280.0 : 230.0;
+          final height = index % 3 == 0 ? 110.0 : 90.0; // Reducción significativa de altura
           return MovieCardShimmer(height: height);
         },
       ),
@@ -90,143 +92,194 @@ class FavoritesGrid extends StatelessWidget {
   }
 
   Widget _buildMovieCard(BuildContext context, Map<String, dynamic> movie, int index) {
-    // Variación de altura para crear un efecto visual más interesante
-    final heightMultiplier = index % 3 == 0 ? 1.2 : 1.0;
-    
     return GestureDetector(
       onTap: onMovieTap != null ? () => onMovieTap!(movie['id']) : null,
       child: Hero(
         tag: 'favorite-${movie['id']}',
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
+        child: Card(
+          elevation: 1, // Reducimos aún más la elevación
+          shadowColor: Colors.black12,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4), // Bordes más pequeños
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Stack(
-              children: [
-                // Póster de la película
-                AspectRatio(
-                  aspectRatio: 2/3 * heightMultiplier,
-                  child: CachedNetworkImage(
-                    imageUrl: movie['posterUrl'] ?? 'https://via.placeholder.com/300x450?text=Sin+Imagen',
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: Colors.grey[300],
-                      child: const Icon(Icons.broken_image),
-                    ),
-                  ),
-                ),
-                
-                // Gradiente para mejorar la visibilidad del título
-                Positioned.fill(
-                  child: DecoratedBox(
+          clipBehavior: Clip.antiAlias,
+          margin: EdgeInsets.zero, // Sin margen para aprovechar mejor el espacio
+          child: Stack(
+            children: [
+              // Póster de la película con tamaño significativamente reducido
+              AspectRatio(
+                aspectRatio: 2/3,
+                child: CachedNetworkImage(
+                  imageUrl: movie['posterUrl'] ?? 'https://via.placeholder.com/300x450?text=Sin+Imagen',
+                  fit: BoxFit.cover,
+                  // Usamos una imagen más pequeña (w92 en vez de w185 o w300)
+                  imageBuilder: (context, imageProvider) => Container(
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.6),
-                        ],
-                        stops: const [0.7, 1.0],
+                      image: DecorationImage(
+                        image: imageProvider,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),
+                  placeholder: (context, url) => Shimmer.fromColors(
+                    baseColor: Colors.grey[300]!,
+                    highlightColor: Colors.grey[100]!,
+                    child: Container(color: Colors.grey[300]),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    color: Colors.grey[800],
+                    child: const Icon(
+                      Icons.broken_image,
+                      color: Colors.white70,
+                      size: 16, // Icono aún más pequeño
+                    ),
+                  ),
+                  memCacheHeight: 120, // Limitar tamaño en caché para optimizar rendimiento
                 ),
-                
-                // Información de la película
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          movie['title'] ?? 'Título desconocido',
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            shadows: [
-                              const Shadow(
-                                offset: Offset(1, 1),
-                                blurRadius: 2,
-                                color: Colors.black,
-                              ),
-                            ],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+              ),
+              
+              // Overlay oscuro discreto para dar mejor contraste a los elementos
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.6),
+                      ],
+                      stops: const [0.7, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Banner más pequeño para el tipo (P/S)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1), // Padding mínimo
+                  decoration: BoxDecoration(
+                    color: movie['tipo'] == 'pelicula' ? Colors.redAccent.withOpacity(0.8) : Colors.blueAccent.withOpacity(0.8),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(3),
+                    ),
+                  ),
+                  child: Text(
+                    movie['tipo'] == 'pelicula' ? 'P' : 'S', // Mantener la letra única
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 6, // Texto aún más pequeño
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Título en la parte inferior, aún más compacto
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(2), // Padding mínimo
+                  child: Text(
+                    movie['titulo'] ?? 'Sin título',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 6, // Texto aún más pequeño
+                      shadows: [
+                        const Shadow(
+                          offset: Offset(0.5, 0.5),
+                          blurRadius: 0.5,
+                          color: Colors.black,
                         ),
-                        if (movie['year'] != null)
-                          Text(
-                            movie['year'].toString(),
-                            style: GoogleFonts.poppins(
-                              color: Colors.white.withOpacity(0.8),
-                              fontSize: 12,
-                              shadows: [
-                                const Shadow(
-                                  offset: Offset(1, 1),
-                                  blurRadius: 2,
-                                  color: Colors.black,
-                                ),
-                              ],
-                            ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              
+              // Añadimos una pequeña estrella como indicador visual
+              if (movie['rating'] != null && movie['rating'] > 0)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(1),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      borderRadius: const BorderRadius.only(
+                        bottomRight: Radius.circular(3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.star,
+                          size: 5,
+                          color: _getRatingColor(movie['rating'].toDouble()),
+                        ),
+                        Text(
+                          movie['rating'].toStringAsFixed(1),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 5,
+                            fontWeight: FontWeight.w500,
                           ),
+                        ),
                       ],
                     ),
                   ),
                 ),
-                
-                // Icono de favorito
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.favorite,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
         ),
+      ).animate()
+       .fadeIn(duration: 180.ms, delay: (20 * index).ms)
+       .slideY(begin: 0.05, end: 0, duration: 180.ms, delay: (20 * index).ms)
+       .scale(
+          begin: const Offset(0.97, 0.97),
+          end: const Offset(1, 1),
+          duration: 180.ms, 
+          delay: (20 * index).ms,
+       ),
+    );
+  }
+  
+  // Método para determinar el color según la puntuación
+  Color _getRatingColor(double rating) {
+    if (rating >= 7.5) {
+      return Colors.green.shade400;
+    } else if (rating >= 6) {
+      return Colors.amber.shade400;
+    } else {
+      return Colors.redAccent;
+    }
+  }
+}
+
+// Widget para mostrar un shimmer en forma de tarjeta mientras se cargan los datos
+class MovieCardShimmer extends StatelessWidget {
+  final double height;
+  
+  const MovieCardShimmer({super.key, required this.height});
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(4), // Bordes más pequeños
       ),
-    ).animate().fadeIn(delay: (100 * index).ms, duration: 400.ms).scale(
-      begin: const Offset(0.9, 0.9),
-      end: const Offset(1, 1),
-      duration: 400.ms,
-      delay: (100 * index).ms,
-      curve: Curves.easeOutQuad,
     );
   }
 }

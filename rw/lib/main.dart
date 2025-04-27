@@ -5,9 +5,16 @@ import 'package:rw/firebase_options.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
 import 'package:logging/logging.dart';
+// Mantenemos estos imports porque los necesitamos para el avatar del usuario
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+// Importaciones que resuelven los errores
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shimmer/shimmer.dart';
 import 'api_service.dart';
 import 'detail_screen.dart';
 import 'perfil_screen.dart'; // Importando la pantalla de perfil
+import 'login_screen.dart'; // Importando la pantalla de inicio de sesión
 
 // Inicializar logger global
 final log = Logger('ReviewsWaves');
@@ -95,6 +102,8 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
   final ApiService _apiService = ApiService();
   Map<int, String> _genreMap = {};
   bool _loadingGenres = true;
+  String _userAvatarUrl = '';
+  bool _loadingAvatar = false;
 
   @override
   void initState() {
@@ -105,8 +114,52 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
       setState(() {
         _currentUser = user;
       });
+      if (user != null) {
+        _loadUserAvatar(); // Cargar el avatar cuando el usuario inicia sesión
+      } else {
+        setState(() {
+          _userAvatarUrl = ''; // Limpiar la URL del avatar cuando se cierra sesión
+        });
+      }
     });
     _loadGenres();
+    // Cargar el avatar al iniciar si hay un usuario actual
+    if (_currentUser != null) {
+      _loadUserAvatar();
+    }
+  }
+
+  // Método para cargar el avatar del usuario desde Firebase
+  Future<void> _loadUserAvatar() async {
+    if (_currentUser == null) return;
+    
+    setState(() {
+      _loadingAvatar = true;
+    });
+    
+    try {
+      final database = FirebaseDatabase.instanceFor(
+        app: FirebaseDatabase.instance.app,
+        databaseURL: 'https://reviews-waves-86c01-default-rtdb.firebaseio.com',
+      ).ref();
+      
+      DataSnapshot snapshot = await database.child('usuarios/${_currentUser!.uid}/perfil/avatarUrl').get();
+      
+      setState(() {
+        if (snapshot.exists && snapshot.value != null) {
+          _userAvatarUrl = snapshot.value.toString();
+        } else {
+          _userAvatarUrl = ''; // No hay avatar configurado
+        }
+        _loadingAvatar = false;
+      });
+    } catch (e) {
+      log.warning('Error al cargar avatar del usuario: $e');
+      setState(() {
+        _userAvatarUrl = '';
+        _loadingAvatar = false;
+      });
+    }
   }
 
   Future<void> _loadGenres() async {
@@ -212,29 +265,6 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
     );
   }
 
-  void _showUserInfo() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Información de Usuario'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Email: ${_currentUser?.email ?? "No disponible"}'),
-            Text('UID: ${_currentUser?.uid ?? "No disponible"}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -302,27 +332,23 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
               )
             else
               PopupMenuButton<String>(
-                icon: const CircleAvatar(
-                  backgroundColor: Colors.white24,
-                  child: Icon(Icons.person, color: Colors.white),
-                ),
+                icon: _buildUserAvatar(),
                 onSelected: (value) {
                   if (value == 'Cerrar Sesión') {
                     _logout();
-                  } else if (value == 'Ver Información') {
-                    _showUserInfo();
                   } else if (value == 'Perfil') {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const PerfilScreen()),
-                    );
+                    ).then((_) {
+                      // Recargar el avatar cuando el usuario regrese del perfil
+                      if (_currentUser != null) {
+                        _loadUserAvatar();
+                      }
+                    });
                   }
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'Ver Información',
-                    child: Text('Ver Información'),
-                  ),
                   const PopupMenuItem(
                     value: 'Perfil',
                     child: Text('Perfil'),
@@ -348,6 +374,65 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
         },
       ),
     );
+  }
+
+  // Implementación del método _buildUserAvatar que faltaba
+  Widget _buildUserAvatar() {
+    if (_loadingAvatar) {
+      return const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      );
+    } else if (_userAvatarUrl.isEmpty) {
+      // Si no hay avatar, mostrar el icono genérico como antes
+      return const CircleAvatar(
+        backgroundColor: Colors.white24,
+        child: Icon(Icons.person, color: Colors.white),
+      );
+    } else if (_userAvatarUrl.endsWith('.svg')) {
+      // Si es un avatar SVG, usamos SvgPicture
+      return CircleAvatar(
+        backgroundColor: Colors.white24,
+        child: ClipOval(
+          child: SvgPicture.network(
+            _userAvatarUrl,
+            placeholderBuilder: (BuildContext context) => const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            width: 30,
+            height: 30,
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    } else {
+      // Para imágenes normales, usamos CachedNetworkImage
+      return CircleAvatar(
+        backgroundColor: Colors.white24,
+        child: ClipOval(
+          child: CachedNetworkImage(
+            imageUrl: _userAvatarUrl,
+            placeholder: (context, url) => const CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+            errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.white),
+            width: 30,
+            height: 30,
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    }
   }
 }
 
@@ -459,41 +544,244 @@ class _MyHomePageState extends State<MyHomePage> {
         future: _contentFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 80,
+                    height: 80,
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).primaryColor,
+                      ),
+                      strokeWidth: 3,
+                    ),
+                  ).animate().scale(
+                    duration: 800.ms,
+                    curve: Curves.elasticOut,
+                    delay: 200.ms,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Buscando contenido...',
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.titleMedium?.color,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ).animate().fadeIn(duration: 400.ms),
+                ],
+              ),
+            );
           } else if (snapshot.hasError) {
-            return const Center(child: Text('Error al cargar los resultados.'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 60,
+                    color: Colors.red.shade400,
+                  ).animate().shake(duration: 400.ms),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error al cargar los resultados',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
+                          _contentFuture = _apiService.searchMovies(widget.searchQuery!);
+                        } else if (widget.filteredGenreId != null) {
+                          if (widget.isMovie == true) {
+                            _contentFuture = _apiService.fetchMoviesByGenre(widget.filteredGenreId!);
+                          } else {
+                            _contentFuture = _apiService.fetchTVShowsByGenre(widget.filteredGenreId!);
+                          }
+                        }
+                      });
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Intentar de nuevo'),
+                  ),
+                ],
+              ),
+            );
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No se encontraron resultados.'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.search_off,
+                    size: 80,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No se encontraron resultados',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Intenta con otra búsqueda o filtro',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ).animate().fadeIn(duration: 400.ms),
+            );
           } else {
             return ListView.builder(
               padding: const EdgeInsets.all(16.0),
               itemCount: snapshot.data!.length,
               itemBuilder: (context, index) {
                 final item = snapshot.data![index];
-                return ListTile(
-                  leading: Image.network(
-                    'https://image.tmdb.org/t/p/w185${item['poster_path']}',
-                    width: 50,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.error),
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  title: Text(item['title'] ?? item['name'] ?? 'Sin título'),
-                  subtitle: Text(item['overview'] ?? 'Sin descripción.'),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailScreen(
-                          id: item['id'],
-                          isMovie: widget.filteredGenreId != null
-                              ? widget.isMovie ?? true
-                              : true,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DetailScreen(
+                            id: item['id'],
+                            isMovie: widget.filteredGenreId != null
+                                ? widget.isMovie ?? true
+                                : true,
+                          ),
                         ),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Imagen con esquinas redondeadas y efecto de sombra
+                          Container(
+                            width: 80,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(_opacityToAlpha(0.2)),
+                                  blurRadius: 5,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: CachedNetworkImage(
+                                imageUrl: 'https://image.tmdb.org/t/p/w185${item['poster_path']}',
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Shimmer.fromColors(
+                                  baseColor: Colors.grey[300]!,
+                                  highlightColor: Colors.grey[100]!,
+                                  child: Container(color: Colors.grey[300]),
+                                ),
+                                errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.white),
+                                width: 30,
+                                height: 30,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // Información del contenido
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Título con calificación
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        item['title'] ?? item['name'] ?? 'Sin título',
+                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    if (item['vote_average'] != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: _getRatingColor(item['vote_average'].toDouble()).withAlpha(_opacityToAlpha(0.2)),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: _getRatingColor(item['vote_average'].toDouble()),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.star,
+                                              size: 14,
+                                              color: _getRatingColor(item['vote_average'].toDouble()),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              item['vote_average'].toStringAsFixed(1),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: _getRatingColor(item['vote_average'].toDouble()),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                // Fecha de lanzamiento
+                                Text(
+                                  _formatDate(item['release_date'] ?? item['first_air_date']),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 8),
+                                // Géneros
+                                Text(
+                                  _getGenres(List<int>.from(item['genre_ids'] ?? [])),
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontStyle: FontStyle.italic,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                // Descripción
+                                Text(
+                                  item['overview'] ?? 'Sin descripción disponible.',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                );
+                    ),
+                  ),
+                ).animate()
+                 .fadeIn(duration: 350.ms, delay: (50 * index).ms)
+                 .slideX(begin: 0.2, end: 0, duration: 350.ms, delay: 50.ms);
               },
             );
           }
@@ -503,15 +791,18 @@ class _MyHomePageState extends State<MyHomePage> {
       return SingleChildScrollView(
         child: Column(
           children: [
+            // Banner destacado con animación
+            _buildFeaturedBanner(),
+            
             const SizedBox(height: 20),
             _buildSectionHeader(context, 'Popular Movies'),
             FutureBuilder<List<dynamic>>(
               future: _moviesFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return _buildLoadingCarousel();
                 } else if (snapshot.hasError) {
-                  return const Text('Error loading movies.');
+                  return _buildErrorWidget('Error cargando películas');
                 } else {
                   return _buildCarousel(snapshot.data!, isMovie: true);
                 }
@@ -523,9 +814,9 @@ class _MyHomePageState extends State<MyHomePage> {
               future: _tvShowsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return _buildLoadingCarousel();
                 } else if (snapshot.hasError) {
-                  return const Text('Error loading TV shows.');
+                  return _buildErrorWidget('Error cargando series');
                 } else {
                   return _buildCarousel(snapshot.data!, isMovie: false);
                 }
@@ -537,12 +828,560 @@ class _MyHomePageState extends State<MyHomePage> {
             const SizedBox(height: 20),
             _buildSectionHeader(context, 'TV Shows by Genre'),
             _buildGenreCarousels(isMovie: false),
+            // Footer con información de la app
+            _buildFooter(),
           ],
         ),
       );
     }
   }
+  
+  // Widget para el banner destacado de contenido
+  Widget _buildFeaturedBanner() {
+    return FutureBuilder<List<dynamic>>(
+      future: _moviesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(height: 200);
+        } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return const SizedBox(height: 0);
+        } else {
+          // Elegir un contenido destacado (el primero de la lista)
+          final featured = snapshot.data![0];
+          
+          return Container(
+            height: 220,
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Stack(
+              children: [
+                // Imagen de fondo
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: CachedNetworkImage(
+                    imageUrl: 'https://image.tmdb.org/t/p/w500${featured['backdrop_path'] ?? featured['poster_path']}',
+                    width: double.infinity,
+                    height: 220,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      color: Theme.of(context).primaryColor.withAlpha(_opacityToAlpha(0.2)),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      color: Theme.of(context).primaryColor.withAlpha(_opacityToAlpha(0.2)),
+                      child: const Icon(Icons.error),
+                    ),
+                  ),
+                ),
+                
+                // Gradiente para mejorar legibilidad del texto
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withAlpha(_opacityToAlpha(0.7)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                
+                // Información del contenido destacado
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Destacado',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            letterSpacing: 1.2,
+                          ),
+                        ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.5, end: 0, duration: 500.ms),
+                        const SizedBox(height: 8),
+                        Text(
+                          featured['title'] ?? featured['name'] ?? 'Sin título',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 22,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black54,
+                                blurRadius: 5,
+                              ),
+                            ],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ).animate().fadeIn(duration: 500.ms, delay: 200.ms)
+                          .slideY(begin: 0.3, end: 0, duration: 500.ms, delay: 200.ms),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => DetailScreen(
+                                      id: featured['id'],
+                                      isMovie: true,
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.play_arrow),
+                              label: const Text('Ver detalles'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).primaryColor,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                              ),
+                            ).animate().fadeIn(duration: 500.ms, delay: 400.ms)
+                              .slideY(begin: 0.2, end: 0, duration: 500.ms, delay: 400.ms),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              onPressed: () {},
+                              icon: const Icon(Icons.bookmark_outline),
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.black.withAlpha(_opacityToAlpha(0.6)),
+                                foregroundColor: Colors.white,
+                              ),
+                            ).animate().fadeIn(duration: 500.ms, delay: 600.ms)
+                              .slideY(begin: 0.2, end: 0, duration: 500.ms, delay: 600.ms),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                // Indicador de calificación
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withAlpha(_opacityToAlpha(0.7)),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _getRatingColor(featured['vote_average'].toDouble()),
+                        width: 2,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.star,
+                          size: 16,
+                          color: _getRatingColor(featured['vote_average'].toDouble()),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          featured['vote_average'].toStringAsFixed(1),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ).animate().fadeIn(duration: 500.ms, delay: 300.ms),
+              ],
+            ),
+          ).animate()
+           .fadeIn(duration: 800.ms)
+           .scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1), duration: 800.ms);
+        }
+      },
+    );
+  }
+  
+  // Widget para mostrar estado de carga de los carruseles
+  Widget _buildLoadingCarousel() {
+    return SizedBox(
+      height: 280,
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey[300]!,
+        highlightColor: Colors.grey[100]!,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: 5,
+          itemBuilder: (context, index) {
+            return Container(
+              width: 180,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+  
+  // Widget para mostrar errores
+  Widget _buildErrorWidget(String message) {
+    return SizedBox(
+      height: 220,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 40,
+              color: Colors.red[400],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodyMedium?.color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Widget para el pie de página
+  Widget _buildFooter() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      color: Theme.of(context).brightness == Brightness.light 
+          ? Colors.grey[100] 
+          : Colors.grey[900],
+      child: Column(
+        children: [
+          Text(
+            'Reviews Waves',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).textTheme.titleMedium?.color,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'La mejor app para descubrir películas y series',
+            style: TextStyle(
+              color: Theme.of(context).textTheme.bodyMedium?.color,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 16),
+          Text(
+            '© ${DateTime.now().year} Reviews Waves. Todos los derechos reservados.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).textTheme.bodyMedium?.color?.withAlpha(_opacityToAlpha(0.6)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  // Widget para mostrar contenido filtrado por género
+  Widget _buildGenreCarousels({required bool isMovie}) {
+    if (!_genresLoaded || _genreMap.isEmpty) {
+      return _buildLoadingCarousel();
+    }
+    
+    // Seleccionar solo algunos géneros populares para mostrar (para no sobrecargar la UI)
+    List<MapEntry<int, String>> genresToShow;
+    if (isMovie) {
+      genresToShow = _genreMap.entries.where((entry) => 
+        [28, 12, 35, 18, 14, 27].contains(entry.key)).toList();
+    } else {
+      genresToShow = _genreMap.entries.where((entry) => 
+        [10759, 18, 35, 10765, 10768, 9648].contains(entry.key)).toList();
+    }
+    
+    if (genresToShow.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: genresToShow.map((genre) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                genre.value,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).textTheme.titleMedium?.color,
+                ),
+              ).animate()
+                .fadeIn(duration: 350.ms)
+                .slideX(begin: -0.1, end: 0, duration: 350.ms, curve: Curves.easeOutQuad),
+            ),
+            FutureBuilder<List<dynamic>>(
+              future: isMovie 
+                ? _apiService.fetchMoviesByGenre(genre.key)
+                : _apiService.fetchTVShowsByGenre(genre.key),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return _buildLoadingCarousel();
+                } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+                  return _buildErrorWidget('No se pudieron cargar ${isMovie ? 'películas' : 'series'} de este género');
+                } else {
+                  return _buildMiniCarousel(snapshot.data!, isMovie: isMovie, genreName: genre.value);
+                }
+              },
+            ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+  
+  // Carrusel pequeño para los géneros
+  Widget _buildMiniCarousel(List<dynamic> items, {required bool isMovie, required String genreName}) {
+    final ScrollController scrollController = ScrollController();
+    
+    return Container(
+      height: 200, // Altura más compacta para el mini-carrusel
+      child: Stack(
+        children: [
+          ListView.separated(
+            controller: scrollController,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: items.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DetailScreen(
+                        id: item['id'],
+                        isMovie: isMovie,
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: 130, // Ancho menor para el mini-carrusel
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(_opacityToAlpha(0.08)),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                        child: Stack(
+                          children: [
+                            // Imagen del póster
+                            CachedNetworkImage(
+                              imageUrl: 'https://image.tmdb.org/t/p/w185${item['poster_path']}',
+                              width: 130,
+                              height: 130,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Shimmer.fromColors(
+                                baseColor: Colors.grey[300]!,
+                                highlightColor: Colors.grey[100]!,
+                                child: Container(color: Colors.grey[300], height: 130),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                color: Colors.grey[800],
+                                height: 130,
+                                child: const Icon(Icons.error, color: Colors.white),
+                              ),
+                            ),
+                            
+                            // Puntuación
+                            if (item['vote_average'] != null)
+                              Positioned(
+                                top: 5,
+                                right: 5,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withAlpha(_opacityToAlpha(0.7)),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.star,
+                                        size: 10,
+                                        color: _getRatingColor(item['vote_average'].toDouble()),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        item['vote_average'].toStringAsFixed(1),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(6.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item['title'] ?? item['name'] ?? 'Unknown',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _formatDate(item['release_date'] ?? item['first_air_date']),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ).animate()
+                .fadeIn(duration: 300.ms, delay: (50 * index).ms)
+                .slideY(begin: 0.1, end: 0, duration: 300.ms, delay: (50 * index).ms);
+            },
+          ),
+          
+          // Botones de navegación mejorados para mini-carruseles
+          if (items.length > 4)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: _buildNavigationButton(
+                  Icons.chevron_left,
+                  () {
+                    scrollController.animateTo(
+                      scrollController.offset - 250,
+                      duration: const Duration(milliseconds: 500),
+                      curve: Curves.easeOutCubic,
+                    );
+                  },
+                  isLeft: true,
+                  isCompact: true,
+                ),
+              ),
+            ),
+            
+          if (items.length > 4)
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: _buildNavigationButton(
+                  Icons.chevron_right,
+                  () {
+                    scrollController.animateTo(
+                      scrollController.offset + 250,
+                      duration: const Duration(milliseconds: 500),
+                      curve: Curves.easeOutCubic,
+                    );
+                  },
+                  isLeft: false,
+                  isCompact: true,
+                ),
+              ),
+            ),
+          
+          // Botón para ver todos los resultados del género
+          Positioned(
+            bottom: 8,
+            right: 16,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => Scaffold(
+                      appBar: AppBar(
+                        title: Text('${isMovie ? 'Películas' : 'Series'} de $genreName'),
+                      ),
+                      body: MyHomePage(
+                        filteredGenreId: _genreMap.entries
+                            .firstWhere((entry) => entry.value == genreName)
+                            .key,
+                        isMovie: isMovie,
+                      ),
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.arrow_forward, size: 14),
+              label: const Text('Ver más', style: TextStyle(fontSize: 12)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor.withAlpha(_opacityToAlpha(0.8)),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minimumSize: const Size(0, 28),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ).animate().fadeIn(duration: 500.ms, delay: 300.ms),
+          ),
+        ],
+      ),
+    );
+  }
+  
   Widget _buildSectionHeader(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -555,64 +1394,19 @@ class _MyHomePageState extends State<MyHomePage> {
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).textTheme.titleLarge?.color,
                 ),
-          ),
+          ).animate()
+            .fadeIn(duration: 400.ms)
+            .slideX(begin: -0.2, end: 0, duration: 400.ms, curve: Curves.easeOutQuad),
           IconButton(
             icon: const Icon(Icons.arrow_forward),
             onPressed: () {
               // Acción para ver más contenido
             },
-          ),
+          ).animate()
+            .fadeIn(duration: 400.ms, delay: 100.ms)
+            .scale(begin: const Offset(0.5, 0.5), end: const Offset(1, 1), duration: 400.ms),
         ],
       ),
-    );
-  }
-
-  Widget _buildGenreCarousels({required bool isMovie}) {
-    return FutureBuilder<Map<int, String>>(
-      future: _genresFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        } else if (snapshot.hasError) {
-          return const Text('Error loading genres.');
-        } else {
-          final genres = snapshot.data!;
-          return Column(
-            children: genres.entries.map((entry) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry.value,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).textTheme.titleMedium?.color,
-                        ),
-                  ),
-                  const SizedBox(height: 10),
-                  FutureBuilder<List<dynamic>>(
-                    future: isMovie
-                        ? _apiService.fetchMoviesByGenre(entry.key)
-                        : _apiService.fetchTVShowsByGenre(entry.key),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      } else if (snapshot.hasError) {
-                        return const Text('Error loading content.');
-                      } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return const Text('No content available.');
-                      } else {
-                        return _buildCarousel(snapshot.data!, isMovie: isMovie);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              );
-            }).toList(),
-          );
-        }
-      },
     );
   }
 
@@ -624,6 +1418,22 @@ class _MyHomePageState extends State<MyHomePage> {
       height: 280,
       child: Stack(
         children: [
+          // Efecto de fondo sutil
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Theme.of(context).primaryColor.withAlpha(_opacityToAlpha(0.05)),
+                    Theme.of(context).scaffoldBackgroundColor,
+                  ],
+                ),
+              ),
+            ).animate().fadeIn(duration: 600.ms),
+          ),
+          
           ListView.separated(
             controller: scrollController,
             scrollDirection: Axis.horizontal,
@@ -649,10 +1459,10 @@ class _MyHomePageState extends State<MyHomePage> {
                   width: 180,
                   decoration: BoxDecoration(
                     color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Color.fromRGBO(0, 0, 0, 0.1),
+                        color: Colors.black.withAlpha(_opacityToAlpha(0.1)),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -661,17 +1471,115 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(10)),
-                        child: Image.network(
-                          'https://image.tmdb.org/t/p/w185${item['poster_path']}',
-                          width: 180,
-                          height: 150,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.error, size: 50),
-                        ),
+                      Stack(
+                        children: [
+                          // Imagen principal
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(12)),
+                            child: CachedNetworkImage(
+                              imageUrl: 'https://image.tmdb.org/t/p/w185${item['poster_path']}',
+                              width: 180,
+                              height: 150,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Shimmer.fromColors(
+                                baseColor: Colors.grey[300]!,
+                                highlightColor: Colors.grey[100]!,
+                                child: Container(color: Colors.grey[300]),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                color: Colors.grey[800],
+                                height: 150,
+                                width: 180,
+                                child: const Icon(Icons.error, size: 40, color: Colors.white54),
+                              ),
+                            ),
+                          ),
+                          
+                          // Gradiente superior para mejorar contraste
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 50,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.black.withAlpha(_opacityToAlpha(0.5)),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          
+                          // Indicador de tipo (película/serie)
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isMovie ? Colors.redAccent : Colors.blueAccent,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 3,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                isMovie ? 'Película' : 'Serie',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          
+                          // Puntuación
+                          if (item['vote_average'] != null)
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                height: 36,
+                                width: 36,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withAlpha(_opacityToAlpha(0.7)),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: _getRatingColor(item['vote_average'].toDouble()),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 3,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    (item['vote_average'] ?? 0).toStringAsFixed(1),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       Padding(
@@ -680,7 +1588,9 @@ class _MyHomePageState extends State<MyHomePage> {
                           item['title'] ?? item['name'] ?? 'Unknown',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -690,707 +1600,159 @@ class _MyHomePageState extends State<MyHomePage> {
                           genreTags,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontSize: 11,
+                          ),
                         ),
                       ),
                       const Spacer(),
+                      // Fecha de lanzamiento
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              size: 12,
+                              color: Theme.of(context).textTheme.bodyMedium?.color,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatDate(item['release_date'] ?? item['first_air_date']),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              );
+              ).animate()
+                .fadeIn(duration: 350.ms, delay: (70 * index).ms)
+                .slideY(begin: 0.2, end: 0, duration: 350.ms, delay: (70 * index).ms)
+                .scale(
+                  begin: const Offset(0.9, 0.9),
+                  end: const Offset(1, 1),
+                  duration: 350.ms, 
+                  delay: (70 * index).ms,
+                  curve: Curves.easeOutQuad,
+                );
             },
           ),
-          Positioned(
-            left: 0,
-            top: 100,
-            child: _buildNavigationButton(Icons.arrow_back, () {
-              scrollController.animateTo(
-                scrollController.offset - 300,
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.ease,
-              );
-            }),
-          ),
-          Positioned(
-            right: 0,
-            top: 100,
-            child: _buildNavigationButton(Icons.arrow_forward, () {
-              scrollController.animateTo(
-                scrollController.offset + 300,
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.ease,
-              );
-            }),
-          ),
+          
+          // Botones de navegación mejorados
+          if (items.length > 3)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: _buildNavigationButton(
+                Icons.chevron_left,
+                () {
+                  scrollController.animateTo(
+                    scrollController.offset - 300,
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutCubic,
+                  );
+                },
+                isLeft: true,
+              ),
+            ),
+            
+          if (items.length > 3)
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: _buildNavigationButton(
+                Icons.chevron_right,
+                () {
+                  scrollController.animateTo(
+                    scrollController.offset + 300,
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutCubic,
+                  );
+                },
+                isLeft: false,
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildNavigationButton(IconData icon, VoidCallback onPressed) {
+  // Método para formatear fechas
+  String _formatDate(String? dateString) {
+    if (dateString == null || dateString.isEmpty) {
+      return 'N/A';
+    }
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('yyyy').format(date);
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
+  // Método para determinar el color según la puntuación
+  Color _getRatingColor(double rating) {
+    if (rating >= 7.5) {
+      return Colors.green.shade400;
+    } else if (rating >= 6) {
+      return Colors.amber.shade400;
+    } else {
+      return Colors.redAccent;
+    }
+  }
+
+  // Botones de navegación mejorados
+  Widget _buildNavigationButton(IconData icon, VoidCallback onPressed, {bool isLeft = true, bool isCompact = false}) {
     return GestureDetector(
       onTap: onPressed,
       child: Container(
-        width: 40,
-        height: 40,
+        width: isCompact ? 30 : 40,
+        height: double.infinity,
         decoration: BoxDecoration(
-          color: Color.fromRGBO(0, 0, 0, 0.5),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, color: Colors.white),
-      ),
-    );
-  }
-}
-
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
-
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  bool _isPasswordVisible = false;
-  bool _isLoading = false;
-
-  Future<void> _login() async {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      await _auth.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Inicio de sesión exitoso')),
-      );
-      if (mounted) {
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF1C1B29),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 350,
-                padding: const EdgeInsets.all(24.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color.fromRGBO(0, 0, 0, 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'Iniciar Sesión',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF333333),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.email),
-                        hintText: 'Correo electrónico',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: !_isPasswordVisible,
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.lock),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _isPasswordVisible = !_isPasswordVisible;
-                            });
-                          },
-                        ),
-                        hintText: 'Contraseña',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _login,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4A90E2),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: _isLoading
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : const Text(
-                                'Iniciar Sesión',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const RegisterScreen()),
-                        );
-                      },
-                      child: const Text('¿No tienes cuenta? Regístrate'),
-                    ),
-                  ],
-                ),
-              ),
+          gradient: LinearGradient(
+            begin: isLeft ? Alignment.centerRight : Alignment.centerLeft,
+            end: isLeft ? Alignment.centerLeft : Alignment.centerRight,
+            colors: [
+              Colors.transparent,
+              Colors.black.withAlpha(_opacityToAlpha(0.5)),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
-
-  @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
-}
-
-class _RegisterScreenState extends State<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final TextEditingController _nombreCompletoController = TextEditingController();
-  final TextEditingController _usuarioController = TextEditingController();
-  final TextEditingController _descripcionController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
-  
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final _database = FirebaseDatabase.instanceFor(
-    app: FirebaseDatabase.instance.app,
-    databaseURL: 'https://reviews-waves-86c01-default-rtdb.firebaseio.com',
-  ).ref();
-  
-  DateTime? _fechaNacimiento;
-  String? _generoSeleccionado;
-  bool _isLoading = false;
-  
-  // Variable para almacenar el email temporal y el usuario no confirmado
-  String? _unverifiedEmail;
-  UserCredential? _unverifiedUser;
-  bool _showVerificationCodeScreen = false;
-
-  // Lista de géneros disponibles
-  final List<String> _opcionesGenero = [
-    'Masculino',
-    'Femenino',
-    'Otro'
-  ];
-
-  Future<void> _requestVerificationCode() async {
-    if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Las contraseñas no coinciden')),
-      );
-      return;
-    }
-    
-    setState(() {
-      _isLoading = true;
-    });
-    
-    try {
-      // Almacenar el email para usarlo en la verificación
-      _unverifiedEmail = _emailController.text.trim();
-      
-      // Iniciar el proceso de registro pero sin completarlo
-      _unverifiedUser = await _auth.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
-      
-      // Enviar email de verificación
-      await _unverifiedUser!.user!.sendEmailVerification();
-      
-      // Si tenemos datos de perfil, los guardamos en la base de datos
-      if (_unverifiedUser != null && _unverifiedUser!.user != null) {
-        _guardarPerfilUsuario(_unverifiedUser!.user!.uid);
-      }
-      
-      if (!mounted) return;
-      
-      setState(() {
-        _showVerificationCodeScreen = true;
-        _isLoading = false;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Se ha enviado un código de verificación a tu correo electrónico'),
-        ),
-      );
-      
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
-    }
-  }
-  
-  // Guardar los datos de perfil en Firebase Realtime Database
-  Future<void> _guardarPerfilUsuario(String uid) async {
-    try {
-      // Solo guardar los campos que tengan valor
-      final Map<String, dynamic> perfilData = {};
-      
-      if (_nombreCompletoController.text.isNotEmpty) {
-        perfilData['nombreCompleto'] = _nombreCompletoController.text.trim();
-      }
-      
-      if (_usuarioController.text.isNotEmpty) {
-        perfilData['usuario'] = _usuarioController.text.trim();
-      }
-      
-      if (_descripcionController.text.isNotEmpty) {
-        perfilData['descripcion'] = _descripcionController.text.trim();
-      }
-      
-      if (_fechaNacimiento != null) {
-        perfilData['fechaNacimiento'] = _fechaNacimiento!.toIso8601String().split('T')[0];
-      }
-      
-      if (_generoSeleccionado != null) {
-        perfilData['genero'] = _generoSeleccionado;
-      }
-      
-      // Solo guardar si hay al menos un campo con valor
-      if (perfilData.isNotEmpty) {
-        await _database.child('usuarios/$uid/perfil').set(perfilData);
-      }
-    } catch (e) {
-      log.info('Error al guardar el perfil: $e');
-      // No mostramos el error al usuario para no interrumpir el flujo de registro
-    }
-  }
-  
-  // Seleccionar fecha de nacimiento
-  Future<void> _seleccionarFecha() async {
-    final DateTime fechaActual = DateTime.now();
-    final DateTime fechaMinima = DateTime(fechaActual.year - 100, 1, 1);
-    final DateTime fechaMaxima = DateTime(fechaActual.year, fechaActual.month, fechaActual.day);
-    
-    final DateTime? fechaSeleccionada = await showDatePicker(
-      context: context,
-      initialDate: DateTime(fechaActual.year - 18, fechaActual.month, fechaActual.day), // Default a 18 años
-      firstDate: fechaMinima,
-      lastDate: fechaMaxima,
-      helpText: 'Selecciona tu fecha de nacimiento',
-      cancelText: 'Cancelar',
-      confirmText: 'Aceptar',
-    );
-    
-    if (fechaSeleccionada != null) {
-      setState(() => _fechaNacimiento = fechaSeleccionada);
-    }
-  }
-  
-  Future<void> _completeRegistration() async {
-    setState(() {
-      _isLoading = true;
-    });
-    
-    try {
-      // Actualizar el perfil del usuario con el nombre
-      if (_nombreCompletoController.text.isNotEmpty) {
-        await _auth.currentUser?.updateDisplayName(_nombreCompletoController.text.trim());
-      }
-      
-      // Esperar a que el usuario actualice la verificación de email
-      await _auth.currentUser?.reload();
-      
-      if (!mounted) return;
-      
-      if (_auth.currentUser?.emailVerified == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Registro completado con éxito')),
-        );
-        
-        Navigator.pop(context);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Por favor, verifica tu correo electrónico')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-  
-  Widget _buildRegistrationForm() {
-    return Form(
-      key: _formKey,
-      child: Column(
-        children: [
-          const Text(
-            'Registrarse',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF333333),
-            ),
-          ),
-          const SizedBox(height: 20),
-          
-          // Nombre completo
-          TextField(
-            controller: _nombreCompletoController,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.person),
-              hintText: 'Nombre completo',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Nombre de usuario
-          TextField(
-            controller: _usuarioController,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.alternate_email),
-              hintText: 'Nombre de usuario',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Email - campo obligatorio
-          TextField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.email),
-              hintText: 'Correo electrónico *',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Contraseña - campo obligatorio
-          TextField(
-            controller: _passwordController,
-            obscureText: true,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.lock),
-              hintText: 'Contraseña *',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Confirmar contraseña - campo obligatorio
-          TextField(
-            controller: _confirmPasswordController,
-            obscureText: true,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.lock_outline),
-              hintText: 'Confirmar contraseña *',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Fecha de nacimiento (opcional)
-          GestureDetector(
-            onTap: _seleccionarFecha,
-            child: InputDecorator(
-              decoration: InputDecoration(
-                labelText: 'Fecha de nacimiento',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+        child: Center(
+          child: Container(
+            width: isCompact ? 28 : 36,
+            height: isCompact ? 28 : 36,
+            decoration: BoxDecoration(
+              color: Colors.black38,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(_opacityToAlpha(0.2)),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
                 ),
-                prefixIcon: const Icon(Icons.calendar_today),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _fechaNacimiento == null
-                        ? 'Selecciona tu fecha de nacimiento'
-                        : DateFormat('dd/MM/yyyy').format(_fechaNacimiento!),
-                    style: TextStyle(
-                      color: _fechaNacimiento == null
-                          ? Colors.grey
-                          : Colors.black,
-                    ),
-                  ),
-                  Icon(
-                    Icons.arrow_drop_down,
-                    color: _fechaNacimiento == null ? Colors.grey : Colors.blue,
-                  ),
-                ],
-              ),
+              ],
             ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Género (opcional)
-          DropdownButtonFormField<String>(
-            value: _generoSeleccionado,
-            decoration: InputDecoration(
-              labelText: 'Género',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              prefixIcon: const Icon(Icons.people),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: isCompact ? 18 : 24,
             ),
-            hint: const Text('Selecciona tu género'),
-            onChanged: (String? newValue) {
-              setState(() {
-                _generoSeleccionado = newValue;
-              });
-            },
-            items: _opcionesGenero.map((String genero) {
-              return DropdownMenuItem<String>(
-                value: genero,
-                child: Text(genero),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-          
-          // Descripción (opcional)
-          TextField(
-            controller: _descripcionController,
-            maxLines: 3,
-            maxLength: 150,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.description),
-              hintText: 'Descripción (opcional)',
-              helperText: 'Máximo 150 caracteres',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          
-          // Botón para enviar verificación
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _requestVerificationCode,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4A90E2),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text(
-                      'Enviar código de verificación',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Enlace para ir a inicio de sesión
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('Ya tengo una cuenta. Iniciar sesión'),
-          ),
-        ],
-      ),
+          ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+           .shimmer(duration: 2000.ms),
+        ),
+      ).animate()
+        .fadeIn(duration: 500.ms)
+        .slideX(begin: isLeft ? -1 : 1, end: 0, duration: 500.ms),
     );
   }
 
-  Widget _buildVerificationScreen() {
-    return Column(
-      children: [
-        const Text(
-          'Verificación de correo',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF333333),
-          ),
-        ),
-        const SizedBox(height: 20),
-        const Text(
-          'Por favor, verifica tu correo electrónico. Hemos enviado un enlace de verificación a tu correo. Haz clic en el enlace para verificar tu cuenta.',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 16, color: Color(0xFF6D6D6D)),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          'Correo: $_unverifiedEmail',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF333333),
-          ),
-        ),
-        const SizedBox(height: 30),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _completeRegistration,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF4A90E2),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: _isLoading
-                ? const CircularProgressIndicator(color: Colors.white)
-                : const Text(
-                    'He verificado mi correo',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton(
-            onPressed: _isLoading ? null : () {
-              _auth.currentUser?.sendEmailVerification();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Se ha reenviado el correo de verificación')),
-              );
-            },
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              side: const BorderSide(color: Color(0xFF4A90E2)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text(
-              'Reenviar correo de verificación',
-              style: TextStyle(fontSize: 16, color: Color(0xFF4A90E2)),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextButton(
-          onPressed: () {
-            setState(() {
-              _showVerificationCodeScreen = false;
-            });
-          },
-          child: const Text('Volver'),
-        ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF1C1B29),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 450, // Aumenté el ancho para acomodar más campos
-                padding: const EdgeInsets.all(24.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color.fromRGBO(0, 0, 0, 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: _showVerificationCodeScreen
-                    ? _buildVerificationScreen()
-                    : _buildRegistrationForm(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  // Función auxiliar para convertir opacity (0.0-1.0) a alpha (0-255)
+  int _opacityToAlpha(double opacity) {
+    return (opacity * 255).round();
   }
 }

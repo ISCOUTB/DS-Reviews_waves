@@ -76,7 +76,7 @@ class _ProfileEditFormState extends State<ProfileEditForm> {
     final DateTime firstDate = DateTime(1900);
     final DateTime lastDate = DateTime(today.year - 10, today.month, today.day);
     
-    DateTime _focusedDay = _selectedDate ?? DateTime(today.year - 20, today.month, today.day);
+    DateTime focusedDay = _selectedDate ?? DateTime(today.year - 20, today.month, today.day);
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.7,
@@ -113,7 +113,7 @@ class _ProfileEditFormState extends State<ProfileEditForm> {
               return TableCalendar(
                 firstDay: firstDate,
                 lastDay: lastDate,
-                focusedDay: _focusedDay,
+                focusedDay: focusedDay,
                 calendarFormat: CalendarFormat.month,
                 selectedDayPredicate: (day) {
                   return isSameDay(_selectedDate, day);
@@ -121,11 +121,11 @@ class _ProfileEditFormState extends State<ProfileEditForm> {
                 onDaySelected: (selectedDay, focusedDay) {
                   setModalState(() {
                     _selectedDate = selectedDay;
-                    _focusedDay = focusedDay;
+                    focusedDay = focusedDay;
                   });
                 },
                 onPageChanged: (focusedDay) {
-                  _focusedDay = focusedDay;
+                  focusedDay = focusedDay;
                 },
                 headerStyle: HeaderStyle(
                   titleCentered: true,

@@ -306,8 +306,8 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withOpacity(0.7),
-                  Colors.black.withOpacity(0.9),
+                  Colors.black.withAlpha(_opacityToAlpha(0.7)),
+                  Colors.black.withAlpha(_opacityToAlpha(0.9)),
                   Colors.black,
                 ],
               ),
@@ -337,7 +337,7 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.5),
+                                color: Colors.black.withAlpha(_opacityToAlpha(0.5)),
                                 spreadRadius: 1,
                                 blurRadius: 10,
                               ),
@@ -432,7 +432,7 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                                     const Icon(Icons.star, color: Colors.white, size: 18),
                                     const SizedBox(width: 4),
                                     Text(
-                                      '${voteAverage.toStringAsFixed(1)}',
+                                      voteAverage.toStringAsFixed(1),
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
@@ -499,7 +499,7 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                       child: Text(
                         overview,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withAlpha(_opacityToAlpha(0.9)),
                           height: 1.5,
                         ),
                       ),
@@ -547,7 +547,7 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                                     borderRadius: BorderRadius.circular(35),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.3),
+                                        color: Colors.black.withAlpha(_opacityToAlpha(0.3)),
                                         blurRadius: 5,
                                       ),
                                     ],
@@ -583,7 +583,7 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                                 ),
                                 Text(
                                   actor['character'] ?? '',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10),
+                                  style: TextStyle(color: Colors.white.withAlpha(_opacityToAlpha(0.7)), fontSize: 10),
                                   textAlign: TextAlign.center,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -679,5 +679,10 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
       }
     }
     return 'Desconocido';
+  }
+
+  // Función auxiliar para convertir opacity (0.0-1.0) a alpha (0-255)
+  int _opacityToAlpha(double opacity) {
+    return (opacity * 255).round();
   }
 }
