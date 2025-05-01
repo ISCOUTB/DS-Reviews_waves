@@ -40,17 +40,31 @@ class _ProfileEditFormState extends State<ProfileEditForm> {
     _nombreController = TextEditingController(text: widget.userData['fullName'] ?? '');
     _usuarioController = TextEditingController(text: widget.userData['username'] ?? '');
     _descripcionController = TextEditingController(text: widget.userData['bio'] ?? '');
-    _fechaNacimientoController = TextEditingController(text: widget.userData['birthDate'] ?? '');
-    _selectedGender = widget.userData['gender'];
-
+    
     // Intentar parsear la fecha si existe
     if (widget.userData['birthDate'] != null) {
+      String birthDateStr = widget.userData['birthDate'];
       try {
-        _selectedDate = DateFormat('dd/MM/yyyy').parse(widget.userData['birthDate']);
+        // Primero intentamos con formato dd/MM/yyyy (el nuevo formato)
+        _selectedDate = DateFormat('dd/MM/yyyy').parse(birthDateStr);
+        _fechaNacimientoController = TextEditingController(text: birthDateStr);
       } catch (e) {
-        // Si no se puede parsear, dejamos _selectedDate como null
+        try {
+          // Si falla, intentamos con formato ISO (formato antiguo)
+          _selectedDate = DateTime.parse(birthDateStr);
+          _fechaNacimientoController = TextEditingController(
+            text: DateFormat('dd/MM/yyyy').format(_selectedDate!)
+          );
+        } catch (e2) {
+          // Si ambos fallan, dejamos la fecha vacía
+          _fechaNacimientoController = TextEditingController(text: '');
+        }
       }
+    } else {
+      _fechaNacimientoController = TextEditingController(text: '');
     }
+    
+    _selectedGender = widget.userData['gender'];
   }
 
   @override
