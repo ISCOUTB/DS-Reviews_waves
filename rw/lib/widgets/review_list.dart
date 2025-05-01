@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:rw/widgets/shimmer_loading.dart';
+import '../reviews_screen.dart';
 
 class UserReviewList extends StatelessWidget {
   final List<Map<String, dynamic>> reviews;
@@ -23,7 +24,7 @@ class UserReviewList extends StatelessWidget {
     }
 
     if (reviews.isEmpty) {
-      return _buildEmptyState();
+      return _buildEmptyState(context);
     }
 
     return ListView.builder(
@@ -50,7 +51,7 @@ class UserReviewList extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(BuildContext context) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -77,18 +78,49 @@ class UserReviewList extends StatelessWidget {
               color: Colors.grey[500],
             ),
           ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () => _navigateToWriteReview(context),
+            icon: const Icon(Icons.edit),
+            label: const Text('Escribir una reseña'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+          ),
         ],
       ).animate().fadeIn(delay: 300.ms, duration: 600.ms),
     );
   }
 
+  void _navigateToWriteReview(BuildContext context) {
+    // Aquí navegaríamos a la pantalla de búsqueda para elegir una película para reseñar
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Busca una película para escribir una reseña')),
+    );
+    // Navigator.push(context, MaterialPageRoute(builder: (context) => SearchScreen()));
+  }
+
   Widget _buildReviewCard(BuildContext context, Map<String, dynamic> review, int index) {
+    // Extraer el movieId, que puede estar como string o como int
+    final movieId = review['movieId'] ?? review['id'];
+    int parsedMovieId;
+    
+    if (movieId is int) {
+      parsedMovieId = movieId;
+    } else if (movieId is String) {
+      parsedMovieId = int.tryParse(movieId) ?? 0;
+    } else {
+      parsedMovieId = 0;
+    }
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.only(bottom: 16),
       child: InkWell(
-        onTap: onReviewTap != null ? () => onReviewTap!(review['id']) : null,
+        onTap: () => _navigateToReviewDetail(context, parsedMovieId, review),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -103,7 +135,7 @@ class UserReviewList extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
-                      imageUrl: review['moviePoster'] ?? 'https://via.placeholder.com/100x150?text=Sin+Imagen',
+                      imageUrl: review['moviePoster'] ?? review['posterPath'] ?? 'https://via.placeholder.com/100x150?text=Sin+Imagen',
                       width: 70,
                       height: 100,
                       fit: BoxFit.cover,
@@ -132,20 +164,21 @@ class UserReviewList extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          review['movieTitle'] ?? 'Título desconocido',
+                          review['movieTitle'] ?? review['title'] ?? 'Título desconocido',
                           style: GoogleFonts.poppins(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),
                         ),
                         
-                        Text(
-                          review['movieYear']?.toString() ?? '',
-                          style: GoogleFonts.poppins(
-                            color: Colors.grey[600],
-                            fontSize: 12,
+                        if (review['movieYear'] != null)
+                          Text(
+                            review['movieYear'].toString(),
+                            style: GoogleFonts.poppins(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
                         
                         const SizedBox(height: 8),
                         
@@ -175,7 +208,7 @@ class UserReviewList extends StatelessWidget {
                         
                         // Fecha de la reseña
                         Text(
-                          review['date'] ?? 'Fecha desconocida',
+                          review['date'] ?? review['fecha'] ?? 'Fecha desconocida',
                           style: GoogleFonts.poppins(
                             fontSize: 11,
                             color: Colors.grey,
@@ -196,17 +229,17 @@ class UserReviewList extends StatelessWidget {
               
               // Contenido de la reseña
               Text(
-                review['content'] ?? 'No hay contenido disponible',
+                review['content'] ?? review['texto'] ?? 'No hay contenido disponible',
                 style: GoogleFonts.poppins(fontSize: 13),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
               
-              if (review['content']?.length > 100)
+              if ((review['content']?.length ?? review['texto']?.length ?? 0) > 100)
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: onReviewTap != null ? () => onReviewTap!(review['id']) : null,
+                    onPressed: () => _navigateToReviewDetail(context, parsedMovieId, review),
                     style: TextButton.styleFrom(
                       minimumSize: Size.zero,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -230,6 +263,153 @@ class UserReviewList extends StatelessWidget {
       duration: 300.ms,
       delay: (100 * index).ms,
       curve: Curves.easeOutQuad,
+    );
+  }
+
+  void _navigateToReviewDetail(BuildContext context, int movieId, Map<String, dynamic> review) {
+    if (onReviewTap != null && review['id'] != null) {
+      onReviewTap!(review['id'].toString());
+      return;
+    }
+    
+    // Si no hay callback personalizado, navegamos a la pantalla de reseñas
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ReviewsScreen(
+          movieId: movieId,
+          movieTitle: review['movieTitle'] ?? review['title'] ?? '',
+          posterPath: review['moviePoster'] ?? review['posterPath'] ?? '',
+        ),
+      ),
+    );
+  }
+}
+
+class ReviewCardShimmer extends StatelessWidget {
+  const ReviewCardShimmer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Película y rating
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Poster de la película
+                Container(
+                  height: 100,
+                  width: 70,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                
+                const SizedBox(width: 12),
+                
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Título
+                      Container(
+                        height: 18,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 8),
+                      
+                      // Año
+                      Container(
+                        height: 12,
+                        width: 60,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 12),
+                      
+                      // Rating
+                      Container(
+                        height: 16,
+                        width: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 8),
+                      
+                      // Fecha
+                      Container(
+                        height: 10,
+                        width: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 10),
+            
+            Divider(color: Colors.grey[300]),
+            
+            const SizedBox(height: 6),
+            
+            // Contenido
+            Container(
+              height: 12,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            
+            const SizedBox(height: 6),
+            
+            Container(
+              height: 12,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            
+            const SizedBox(height: 6),
+            
+            Container(
+              height: 12,
+              width: 200,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -193,6 +193,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
     
     try {
       if (_currentUser != null) {
+        // Obtener los datos del perfil usando la nueva estructura
         DataSnapshot snapshot = await _database.child('usuarios/${_currentUser!.uid}/perfil').get();
         
         if (!mounted) return;
@@ -203,7 +204,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
             _userData = data;
             
             // Si ya tiene un avatar guardado, lo utilizamos
-            if (data.containsKey('avatarUrl')) {
+            if (data.containsKey('avatarUrl') && data['avatarUrl'].isNotEmpty) {
               _selectedAvatar = data['avatarUrl'];
               
               // Intentamos determinar la categoría del avatar seleccionado
@@ -828,7 +829,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                         pinned: true,
                         flexibleSpace: FlexibleSpaceBar(
                           title: Text(
-                            _userData['usuario'] ?? _currentUser?.displayName ?? 'Usuario',
+                            _userData['username'] ?? _currentUser?.displayName ?? 'Usuario',
                             style: GoogleFonts.poppins(
                               fontWeight: FontWeight.bold,
                               shadows: [
@@ -908,17 +909,17 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                                 child: Column(
                                   children: [
                                     Text(
-                                      _userData['nombreCompleto'] ?? 'Sin nombre',
+                                      _userData['fullName'] ?? 'Sin nombre',
                                       style: GoogleFonts.poppins(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    if (_userData['descripcion'] != null)
+                                    if (_userData['bio'] != null)
                                       Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
                                         child: Text(
-                                          _userData['descripcion'],
+                                          _userData['bio'],
                                           textAlign: TextAlign.center,
                                           style: GoogleFonts.poppins(
                                             fontSize: 14,

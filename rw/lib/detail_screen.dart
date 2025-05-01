@@ -7,6 +7,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:lottie/lottie.dart';
+import 'reviews_screen.dart';
+import 'write_review_screen.dart';
 
 // Inicializamos el logger para la pantalla de detalles
 final log = Logger('DetailScreen');
@@ -239,8 +241,10 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Cambiado de 'assets/lotties/movie-loading.json' a 'lotties/movie-loading.json'
+          // para evitar que Flutter duplique el prefijo 'assets/'
           Lottie.asset(
-            'assets/lotties/movie-loading.json',
+            'lotties/movie-loading.json',
             width: 150,
             height: 150,
             fit: BoxFit.contain,
@@ -269,7 +273,11 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
     final String backdropUrl = backdropPath != null 
         ? 'https://image.tmdb.org/t/p/w1280$backdropPath' 
         : 'https://via.placeholder.com/1280x720';
-    final String genreNames = _details!['genres']?.map((g) => g['name']).join(', ') ?? 'Sin géneros';
+    
+    final String genreNames = _details!['genres'] != null
+        ? _details!['genres'].map<String>((g) => g['name'].toString()).join(', ')
+        : 'Sin géneros';
+    
     final double voteAverage = (_details!['vote_average'] ?? 0.0).toDouble();
     final String releaseDate = widget.isMovie 
         ? (_details!['release_date'] ?? 'Desconocido')
@@ -607,9 +615,17 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                         icon: const Icon(Icons.rate_review),
                         label: const Text('Ver Reseñas'),
                         onPressed: () {
-                          // Acción para ver reseñas
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Próximamente: Ver reseñas')),
+                          // Navegamos a la pantalla de reseñas
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ReviewsScreen(
+                                movieId: widget.id,
+                                movieTitle: title,
+                                posterPath: posterPath ?? '',
+                                genres: _details!['genres']?.map<String>((g) => g['name'].toString()).toList() ?? [],
+                              ),
+                            ),
                           );
                         },
                         style: ElevatedButton.styleFrom(
@@ -634,12 +650,30 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.edit),
                         label: const Text('Escribir Reseña'),
-                        onPressed: () {
-                          // Acción para escribir reseña
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Próximamente: Escribir reseña')),
-                          );
-                        },
+                        onPressed: _currentUser != null 
+                          ? () {
+                              // Navegamos a la pantalla para escribir reseñas
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => WriteReviewScreen(
+                                    movieId: widget.id,
+                                    movieTitle: title,
+                                    posterPath: posterPath ?? '',
+                                    genres: _details!['genres']?.map<String>((g) => g['name'].toString()).toList() ?? [],
+                                  ),
+                                ),
+                              );
+                            }
+                          : () {
+                              // Mostrar mensaje para iniciar sesión
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Debes iniciar sesión para escribir una reseña'),
+                                  duration: Duration(seconds: 3),
+                                ),
+                              );
+                            },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                           side: const BorderSide(color: Colors.white54),

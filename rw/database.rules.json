@@ -8,6 +8,15 @@
         ".read": "$uid === auth.uid",
         ".write": "$uid === auth.uid"
       }
+    },
+    "reseñas": {
+      "$contentId": {
+        "$uid": {
+          ".read": true,
+          ".write": "$uid === auth.uid",
+          ".indexOn": ["rating", "timestamp"]
+        }
+      }
     }
   }
 }

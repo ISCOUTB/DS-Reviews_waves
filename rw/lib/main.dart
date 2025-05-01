@@ -1168,7 +1168,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget _buildMiniCarousel(List<dynamic> items, {required bool isMovie, required String genreName}) {
     final ScrollController scrollController = ScrollController();
     
-    return Container(
+    return SizedBox(
       height: 200, // Altura más compacta para el mini-carrusel
       child: Stack(
         children: [

@@ -37,16 +37,16 @@ class _ProfileEditFormState extends State<ProfileEditForm> {
   @override
   void initState() {
     super.initState();
-    _nombreController = TextEditingController(text: widget.userData['nombreCompleto'] ?? '');
-    _usuarioController = TextEditingController(text: widget.userData['usuario'] ?? '');
-    _descripcionController = TextEditingController(text: widget.userData['descripcion'] ?? '');
-    _fechaNacimientoController = TextEditingController(text: widget.userData['fechaNacimiento'] ?? '');
-    _selectedGender = widget.userData['genero'];
+    _nombreController = TextEditingController(text: widget.userData['fullName'] ?? '');
+    _usuarioController = TextEditingController(text: widget.userData['username'] ?? '');
+    _descripcionController = TextEditingController(text: widget.userData['bio'] ?? '');
+    _fechaNacimientoController = TextEditingController(text: widget.userData['birthDate'] ?? '');
+    _selectedGender = widget.userData['gender'];
 
     // Intentar parsear la fecha si existe
-    if (widget.userData['fechaNacimiento'] != null) {
+    if (widget.userData['birthDate'] != null) {
       try {
-        _selectedDate = DateFormat('dd/MM/yyyy').parse(widget.userData['fechaNacimiento']);
+        _selectedDate = DateFormat('dd/MM/yyyy').parse(widget.userData['birthDate']);
       } catch (e) {
         // Si no se puede parsear, dejamos _selectedDate como null
       }
@@ -293,11 +293,11 @@ class _ProfileEditFormState extends State<ProfileEditForm> {
                 if (_formKey.currentState!.validate()) {
                   // Preparar datos actualizados
                   Map<String, dynamic> updatedData = {
-                    'nombreCompleto': _nombreController.text,
-                    'usuario': _usuarioController.text,
-                    'descripcion': _descripcionController.text,
-                    'fechaNacimiento': _fechaNacimientoController.text,
-                    'genero': _selectedGender,
+                    'fullName': _nombreController.text,
+                    'username': _usuarioController.text,
+                    'bio': _descripcionController.text,
+                    'birthDate': _fechaNacimientoController.text,
+                    'gender': _selectedGender,
                   };
                   
                   widget.onSave(updatedData);
