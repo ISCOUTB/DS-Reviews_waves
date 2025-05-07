@@ -28,14 +28,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   final ReviewService _reviewService = ReviewService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late Stream<QuerySnapshot> _reviewsStream;
-  bool _showingFirestore = false;
 
   @override
   void initState() {
     super.initState();
-    // Inicializamos ambas fuentes de datos
     _reviewsStream = _reviewService.getReviewsForMedia(widget.movieId.toString());
-    _showingFirestore = true;
   }
 
   @override
@@ -43,22 +40,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reseñas'),
-        actions: [
-          // Botón para alternar entre Realtime Database y Firestore
-          IconButton(
-            tooltip: _showingFirestore 
-                ? 'Ver reseñas en tiempo real' 
-                : 'Ver todas las reseñas',
-            icon: Icon(_showingFirestore 
-                ? Icons.refresh 
-                : Icons.cloud),
-            onPressed: () {
-              setState(() {
-                _showingFirestore = !_showingFirestore;
-              });
-            },
-          ),
-        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _auth.currentUser != null 
@@ -67,9 +48,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         label: const Text('Escribir reseña'),
         icon: const Icon(Icons.rate_review),
       ),
-      body: _showingFirestore
-          ? _buildFirestoreReviews()
-          : _buildRealtimeDatabaseReviews(),
+      body: _buildFirestoreReviews(),
     );
   }
 
@@ -105,37 +84,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     );
   }
 
-  Widget _buildRealtimeDatabaseReviews() {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-
-      future: _reviewService.fetchReviewsForMovie(widget.movieId),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return _buildLoadingState();
-        }
-        
-        if (snap.hasError) {
-          return _buildErrorState(snap.error.toString());
-        }
-        
-        final reviews = snap.data ?? [];
-        if (reviews.isEmpty) {
-          return _buildEmptyState();
-        }
-        
-        return ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: reviews.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, i) {
-            final reviewData = reviews[i];
-            return _buildReviewCard(reviewData, '', false);
-          },
-        );
-      },
-    );
-  }
-  
   Widget _buildLoadingState() {
     return Center(
       child: Column(
@@ -182,13 +130,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           ElevatedButton.icon(
             onPressed: () {
               setState(() {
-                // Reintentar
-                if (_showingFirestore) {
-                  _reviewsStream = _reviewService.getReviewsForMedia(widget.movieId.toString());
-                } else {
-                  // Forzar reconstrucción del FutureBuilder
-                  setState(() {});
-                }
+                _reviewsStream = _reviewService.getReviewsForMedia(widget.movieId.toString());
               });
             },
             icon: const Icon(Icons.refresh),
@@ -237,36 +179,17 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   }
   
   Widget _buildReviewCard(Map<String, dynamic> reviewData, String reviewId, bool isFirestore) {
-    // Extraer datos de la reseña según la fuente
-    final String authorName = isFirestore
-        ? (reviewData['authorName'] ?? 'Usuario anónimo')
-        : 'Usuario';
+    final String authorName = reviewData['authorName'] ?? 'Usuario anónimo';
+    final String authorPhoto = reviewData['authorPhotoURL'] ?? '';
+    final String content = reviewData['content'] ?? '';
+    final String title = reviewData['title'] ?? 'Reseña de película';
+    final double rating = ((reviewData['rating'] ?? 0) as num).toDouble();
     
-    final String authorPhoto = isFirestore
-        ? (reviewData['authorPhotoURL'] ?? '')
-        : '';
-    
-    final String content = isFirestore
-        ? (reviewData['content'] ?? reviewData['texto'] ?? '')
-        : (reviewData['texto'] ?? '');
-    
-    final String title = isFirestore
-        ? (reviewData['title'] ?? 'Reseña de película')
-        : 'Reseña de película';
-    
-    final double rating = isFirestore
-        ? ((reviewData['rating'] ?? 0) as num).toDouble()
-        : ((reviewData['rating'] ?? 0) as num).toDouble();
-    
-    // Formatear fecha
     String formattedDate = '';
-    if (isFirestore && reviewData['createdAt'] is Timestamp) {
+    if (reviewData['createdAt'] is Timestamp) {
       final timestamp = reviewData['createdAt'] as Timestamp;
       formattedDate = DateFormat.yMd().add_jm()
           .format(timestamp.toDate());
-    } else if (!isFirestore && reviewData['timestamp'] is int) {
-      formattedDate = DateFormat.yMd().add_jm()
-          .format(DateTime.fromMillisecondsSinceEpoch(reviewData['timestamp']));
     }
 
     return Card(
@@ -279,10 +202,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Cabecera con información del autor y fecha
             Row(
               children: [
-                // Foto de perfil del autor
                 if (authorPhoto.isNotEmpty)
                   CircleAvatar(
                     radius: 20,
@@ -305,7 +226,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   
                 const SizedBox(width: 10),
                 
-                // Nombre del autor y fecha
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,7 +248,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   ),
                 ),
                 
-                // Puntuación
                 _buildRatingIndicator(rating),
               ],
             ),
@@ -337,7 +256,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             const Divider(height: 1),
             const SizedBox(height: 12),
             
-            // Título de la reseña
             if (title.isNotEmpty && title != 'Reseña de película')
               Text(
                 title,
@@ -349,16 +267,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             
             const SizedBox(height: 8),
             
-            // Contenido de la reseña
             Text(
               content,
               style: const TextStyle(fontSize: 15),
             ),
             
-            // Opciones para el usuario que escribió la reseña
-            if (isFirestore && 
-                _auth.currentUser != null && 
-                reviewData['userId'] == _auth.currentUser!.uid)
+            if (_auth.currentUser != null && reviewData['userId'] == _auth.currentUser!.uid)
               _buildReviewActions(reviewId),
           ],
         ),
@@ -407,16 +321,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton.icon(
-            onPressed: () => _editReview(reviewId),
-            icon: const Icon(Icons.edit, size: 16),
-            label: const Text('Editar'),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              minimumSize: Size.zero,
-            ),
-          ),
-          const SizedBox(width: 8),
-          TextButton.icon(
             onPressed: () => _deleteReview(reviewId),
             icon: const Icon(Icons.delete_outline, size: 16),
             label: const Text('Eliminar'),
@@ -461,15 +365,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     );
   }
   
-  void _editReview(String reviewId) {
-    // Aquí implementarías la edición de la reseña
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Funcionalidad de edición en desarrollo')),
-    );
-  }
-  
   void _deleteReview(String reviewId) {
-    // Diálogo de confirmación simple sin animaciones
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -483,10 +379,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             ),
             TextButton(
               onPressed: () {
-                // Cerramos el diálogo
                 Navigator.of(context).pop();
                 
-                // Mostramos mensaje de procesando
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Eliminando reseña...'),
@@ -494,13 +388,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   ),
                 );
                 
-                // Implementación simplificada sin async/await
                 FirebaseFirestore.instance
                   .collection('reviews')
                   .doc(reviewId)
                   .delete()
                   .then((_) {
-                    // Solo recargamos la vista - sin mensajes adicionales
                     if (mounted) {
                       setState(() {
                         _reviewsStream = _reviewService.getReviewsForMedia(widget.movieId.toString());
@@ -508,7 +400,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                     }
                   })
                   .catchError((error) {
-                    // Si hay error, simplemente mostramos un mensaje corto
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(

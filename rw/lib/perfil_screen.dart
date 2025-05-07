@@ -9,12 +9,16 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:logging/logging.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 import 'widgets/profile_stats_card.dart';
 import 'widgets/profile_edit_form.dart';
 import 'widgets/review_list.dart';
 import 'widgets/favorites_grid.dart';
 import 'widgets/shimmer_loading.dart';
+import 'review_service.dart';
+import 'detail_screen.dart';
 
 // Inicializamos el logger específico para la pantalla de perfil
 final log = Logger('PerfilScreen');
@@ -33,6 +37,9 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
   // Información del usuario actual
   User? _currentUser;
   Map<String, dynamic> _userData = {};
+  
+  // Servicio de reseñas
+  final ReviewService _reviewService = ReviewService();
   
   // Estados de carga
   bool _isLoading = true;
@@ -103,22 +110,10 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
   bool _isAvatarShimmering = false;
   bool _isProfileShimmering = false;
   
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _currentUser = FirebaseAuth.instance.currentUser;
-    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
-    _categoryAnimController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    
-    // Generamos las listas de avatares por categoría
-    _generateAvatarsForCategories();
-    
-    // Cargamos los datos del perfil del usuario desde Firebase
-    _loadUserData();
-    
-    // Escuchamos los cambios de pestaña para cargar los datos correspondientes
-    _tabController.addListener(_handleTabChange);
+  // Método para recargar las reseñas del usuario al iniciar la página
+  Future<void> _reloadUserReviews() async {
+    await _loadUserReviews();
+    setState(() {});
   }
 
   // Convertir valores de opacidad (0.0-1.0) a valores alpha (0-255)
@@ -292,34 +287,165 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
     });
     
     try {
-      DataSnapshot snapshot = await _database.child('usuarios/${_currentUser!.uid}/resenas').get();
+      // Usaremos un Map para evitar duplicados, usando mediaId como clave
+      Map<String, Map<String, dynamic>> reviewsMap = {};
       
-      if (!mounted) return;
+      // 1. Cargar reseñas desde Realtime Database
+      log.info('Cargando reseñas desde Realtime Database...');
+      DataSnapshot rtdbSnapshot = await _database.child('reseñas').get();
       
-      List<Map<String, dynamic>> reviews = [];
-      
-      if (snapshot.exists) {
-        Map<dynamic, dynamic> reviewsData = snapshot.value as Map;
+      if (rtdbSnapshot.exists && rtdbSnapshot.value != null) {
+        final Map<dynamic, dynamic> allReviews = rtdbSnapshot.value as Map;
         
-        // Convertimos los datos de Firebase a una lista de Maps
-        reviewsData.forEach((key, value) {
-          final Map<String, dynamic> review = Map<String, dynamic>.from(value as Map);
-          review['id'] = key;
-          reviews.add(review);
-        });
-        
-        // Ordenamos por fecha (más reciente primero)
-        reviews.sort((a, b) {
-          DateTime dateA = DateTime.tryParse(a['fecha'] ?? '') ?? DateTime(1900);
-          DateTime dateB = DateTime.tryParse(b['fecha'] ?? '') ?? DateTime(1900);
-          return dateB.compareTo(dateA);
+        // Iteramos por cada mediaId (película/serie)
+        allReviews.forEach((mediaId, mediaReviews) {
+          if (mediaReviews is Map) {
+            // Verificamos si el usuario tiene reseñas para este mediaId
+            if (mediaReviews.containsKey(_currentUser!.uid)) {
+              final reviewData = mediaReviews[_currentUser!.uid] as Map<dynamic, dynamic>;
+              
+              // Verificamos el posterPath y lo formateamos correctamente
+              String posterPath = reviewData['posterPath'] ?? '';
+              
+              // Si no empieza con http, asumimos que es un path relativo y añadimos la base URL
+              if (posterPath.isNotEmpty && !posterPath.startsWith('http')) {
+                posterPath = 'https://image.tmdb.org/t/p/w500$posterPath';
+              } else if (posterPath.isEmpty) {
+                // Si no hay posterPath, usamos una imagen de placeholder
+                posterPath = 'https://via.placeholder.com/185x278?text=No+Poster';
+              }
+              
+              log.info('RTDB Reseña para mediaId=$mediaId con posterPath=$posterPath');
+              
+              // Formatear la reseña para nuestro formato estándar
+              final Map<String, dynamic> review = {
+                'id': '$mediaId-${_currentUser!.uid}',
+                'mediaId': mediaId,
+                'texto': reviewData['texto'] ?? '',
+                'content': reviewData['texto'] ?? '',
+                'rating': (reviewData['rating'] as num?)?.toDouble() ?? 0.0,
+                'source': 'rtdb',
+                'userId': _currentUser!.uid,
+                'movieTitle': reviewData['title'] ?? 'Título desconocido',
+                'posterPath': posterPath,
+                'moviePoster': posterPath, // Añadimos explícitamente moviePoster para asegurar compatibilidad
+              };
+              
+              // Agregar timestamp si existe
+              if (reviewData.containsKey('timestamp')) {
+                final timestamp = reviewData['timestamp'];
+                if (timestamp is int) {
+                  review['timestamp'] = timestamp;
+                  // Convertir timestamp a fecha legible
+                  final DateTime date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+                  review['fecha'] = DateFormat('yyyy-MM-dd HH:mm:ss').format(date);
+                  review['date'] = DateFormat('dd/MM/yyyy').format(date);
+                }
+              }
+              
+              // Usamos una clave única para evitar duplicados
+              reviewsMap[mediaId.toString()] = review;
+            }
+          }
         });
       }
       
+      // 2. Cargar reseñas desde Firestore
+      log.info('Cargando reseñas desde Firestore...');
+      QuerySnapshot firestoreSnapshot = await FirebaseFirestore.instance
+          .collection('reviews')
+          .where('userId', isEqualTo: _currentUser!.uid)
+          .get();
+      
+      for (var doc in firestoreSnapshot.docs) {
+        final Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        final String mediaId = data['mediaId'] ?? '';
+        
+        // Verificamos el posterPath y lo formateamos correctamente
+        String posterPath = data['posterPath'] ?? '';
+        
+        // Si no empieza con http, asumimos que es un path relativo y añadimos la base URL
+        if (posterPath.isNotEmpty && !posterPath.startsWith('http')) {
+          posterPath = 'https://image.tmdb.org/t/p/w500$posterPath';
+        } else if (posterPath.isEmpty) {
+          // Si no hay posterPath, usamos una imagen de placeholder
+          posterPath = 'https://via.placeholder.com/185x278?text=No+Poster';
+        }
+        
+        log.info('Firestore Reseña para mediaId=$mediaId con posterPath=$posterPath');
+        
+        // Formatear la reseña para nuestro formato estándar
+        final Map<String, dynamic> review = {
+          'id': doc.id,
+          'mediaId': mediaId,
+          'movieTitle': data['mediaTitle'] ?? 'Sin título',
+          'posterPath': posterPath,
+          'texto': data['content'] ?? '',
+          'content': data['content'] ?? '',
+          'title': data['title'] ?? 'Reseña de película',
+          'rating': (data['rating'] as num?)?.toDouble() ?? 0.0,
+          'source': 'firestore',
+          'userId': _currentUser!.uid,
+          'moviePoster': posterPath, // Usamos la misma URL formateada
+        };
+        
+        // Agregar timestamp y fecha formateada si existe
+        if (data.containsKey('createdAt')) {
+          if (data['createdAt'] is Timestamp) {
+            final Timestamp timestamp = data['createdAt'] as Timestamp;
+            review['timestamp'] = timestamp.millisecondsSinceEpoch;
+            final DateTime date = timestamp.toDate();
+            review['fecha'] = DateFormat('yyyy-MM-dd HH:mm:ss').format(date);
+            review['date'] = DateFormat('dd/MM/yyyy').format(date);
+          }
+        }
+        
+        // Si ya existe una reseña RTDB con el mismo mediaId, decidimos cuál mantener
+        if (reviewsMap.containsKey(mediaId)) {
+          // Si la reseña de Firestore es más reciente, la preferimos
+          int firestoreTimestamp = review['timestamp'] ?? 0;
+          int rtdbTimestamp = reviewsMap[mediaId]!['timestamp'] ?? 0;
+          
+          if (firestoreTimestamp >= rtdbTimestamp) {
+            reviewsMap[mediaId] = review;
+          }
+        } else {
+          reviewsMap[mediaId] = review;
+        }
+      }
+      
+      // 3. Convertimos el Map a una lista y ordenamos por fecha
+      List<Map<String, dynamic>> reviews = reviewsMap.values.toList();
+      
+      reviews.sort((a, b) {
+        int timestampA = a['timestamp'] ?? 0;
+        int timestampB = b['timestamp'] ?? 0;
+        return timestampB.compareTo(timestampA);
+      });
+      
+      // Registramos un resumen de las reseñas para depuración
+      for (int i = 0; i < reviews.length; i++) {
+        log.info(
+          'Reseña #${i+1}: título=${reviews[i]['movieTitle']}, '
+          'posterPath=${reviews[i]['posterPath']}, '
+          'moviePoster=${reviews[i]['moviePoster']}'
+        );
+      }
+      
+      // 4. Actualizar estado
+      if (!mounted) return;
       setState(() {
         _userReviews = reviews;
         _isLoadingReviews = false;
+        
+        // Actualizar contador de reseñas en el perfil
+        _userData = {
+          ..._userData,
+          'reviewsCount': reviews.length,
+        };
       });
+      
+      log.info('Se cargaron ${reviews.length} reseñas en total.');
     } catch (e) {
       log.warning('Error al cargar reseñas del usuario: $e');
       if (!mounted) return;
@@ -811,6 +937,108 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
         return Icons.image;
     }
   }
+  
+  // Método para eliminar una reseña
+  Future<void> _deleteReview(Map<String, dynamic> review) async {
+    if (_currentUser == null) return;
+    
+    final String source = review['source'] as String? ?? '';
+    final String reviewId = review['id'] as String? ?? '';
+    
+    if (reviewId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se encontró el ID de la reseña')),
+      );
+      return;
+    }
+    
+    // Mostrar diálogo de confirmación
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar reseña'),
+        content: const Text('¿Estás seguro de que quieres eliminar esta reseña? Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirm != true) return;
+    
+    setState(() {
+      _isLoadingReviews = true;
+    });
+    
+    try {
+      if (source == 'firestore') {
+        // Eliminar de Firestore
+        await _reviewService.deleteReview(reviewId);
+      } else if (source == 'rtdb') {
+        // Eliminar de RTDB
+        final String mediaId = review['mediaId']?.toString() ?? '';
+        if (mediaId.isNotEmpty) {
+          await _database.child('reseñas/$mediaId/${_currentUser!.uid}').remove();
+        }
+      }
+      
+      // Actualizar lista de reseñas
+      if (!mounted) return;
+      
+      // Recreamos la lista sin la reseña eliminada
+      setState(() {
+        _userReviews = _userReviews.where((r) => r['id'] != reviewId).toList();
+        _userData = {
+          ..._userData,
+          'reviewsCount': _userReviews.length,
+        };
+        _isLoadingReviews = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reseña eliminada correctamente')),
+      );
+    } catch (e) {
+      log.severe('Error al eliminar reseña: $e');
+      if (!mounted) return;
+      setState(() {
+        _isLoadingReviews = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar la reseña: $e')),
+      );
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _currentUser = FirebaseAuth.instance.currentUser;
+    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _categoryAnimController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    
+    // Generamos las listas de avatares por categoría
+    _generateAvatarsForCategories();
+    
+    // Cargamos los datos del perfil del usuario desde Firebase
+    _loadUserData();
+    
+    // Precargamos las reseñas del usuario para que estén disponibles al cambiar a la pestaña
+    if (_currentUser != null) {
+      _reloadUserReviews();
+    }
+    
+    // Escuchamos los cambios de pestaña para cargar los datos correspondientes
+    _tabController.addListener(_handleTabChange);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1023,9 +1251,82 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
       reviews: _userReviews,
       isLoading: _isLoadingReviews,
       onReviewTap: (reviewId) {
-        // Aquí se navegaría al detalle de la reseña
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ver reseña: $reviewId')),
+        // Buscar la reseña correspondiente
+        final review = _userReviews.firstWhere(
+          (r) => r['id'] == reviewId,
+          orElse: () => <String, dynamic>{},
+        );
+        
+        // Si no encontramos la reseña, mostramos un mensaje
+        if (review.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se encontró la reseña')),
+          );
+          return;
+        }
+        
+        // Mostramos opciones para la reseña (ver detalles, eliminar)
+        showModalBottomSheet(
+          context: context,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          builder: (context) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.movie_outlined),
+                  title: const Text('Ver detalles de la película'),
+                  onTap: () {
+                    Navigator.pop(context); // Cerramos el bottom sheet
+                    
+                    // Navegamos a la pantalla de detalles de la película
+                    if (review.containsKey('mediaId')) {
+                      final mediaId = review['mediaId'];
+                      int? parsedId;
+                      
+                      // Intentamos parsear el ID
+                      if (mediaId is int) {
+                        parsedId = mediaId;
+                      } else if (mediaId is String) {
+                        parsedId = int.tryParse(mediaId);
+                      }
+                      
+                      if (parsedId != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => DetailScreen(
+                              id: parsedId!,
+                              isMovie: true,
+                            ),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('ID de contenido no válido')),
+                        );
+                      }
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('No se encontró el ID del contenido')),
+                      );
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outlined, color: Colors.red),
+                  title: const Text('Eliminar reseña', style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(context); // Cerramos el bottom sheet
+                    _deleteReview(review);
+                  },
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
