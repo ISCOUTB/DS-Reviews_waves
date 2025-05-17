@@ -5,9 +5,8 @@ import 'package:rw/firebase_options.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
 import 'package:logging/logging.dart';
-// Mantenemos estos imports porque los necesitamos para el avatar del usuario
+// Import para mostrar imágenes en caché
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 // Importaciones que resuelven los errores
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shimmer/shimmer.dart';
@@ -49,11 +48,10 @@ class _MyAppState extends State<MyApp> {
       _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
     });
   }
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Reviews Waves',
       theme: ThemeData(
         brightness: Brightness.light,
         primaryColor: const Color(0xFFD9C2F2),
@@ -98,21 +96,16 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   final TextEditingController _searchController = TextEditingController();
   User? _currentUser;
-  late Stream<User?> _authStateStream;
-  final ApiService _apiService = ApiService();
+  late Stream<User?> _authStateStream;  final ApiService _apiService = ApiService();
   Map<int, String> _genreMap = {};
   bool _loadingGenres = true;
-  String _userAvatarUrl = '';
-  bool _loadingAvatar = false;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  // Variable para determinar si estamos en un dispositivo móvil
-  bool _isMobileView = false;
+  // Eliminamos la variable _isMobileView ya que no la necesitamos
 
   // Método para abrir el drawer derecho
   void _openEndDrawer() {
     _scaffoldKey.currentState?.openEndDrawer();
   }
-
   @override
   void initState() {
     super.initState();
@@ -122,52 +115,8 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
       setState(() {
         _currentUser = user;
       });
-      if (user != null) {
-        _loadUserAvatar(); // Cargar el avatar cuando el usuario inicia sesión
-      } else {
-        setState(() {
-          _userAvatarUrl = ''; // Limpiar la URL del avatar cuando se cierra sesión
-        });
-      }
     });
     _loadGenres();
-    // Cargar el avatar al iniciar si hay un usuario actual
-    if (_currentUser != null) {
-      _loadUserAvatar();
-    }
-  }
-
-  // Método para cargar el avatar del usuario desde Firebase
-  Future<void> _loadUserAvatar() async {
-    if (_currentUser == null) return;
-    
-    setState(() {
-      _loadingAvatar = true;
-    });
-    
-    try {
-      final database = FirebaseDatabase.instanceFor(
-        app: FirebaseDatabase.instance.app,
-        databaseURL: 'https://reviews-waves-86c01-default-rtdb.firebaseio.com',
-      ).ref();
-      
-      DataSnapshot snapshot = await database.child('usuarios/${_currentUser!.uid}/perfil/avatarUrl').get();
-      
-      setState(() {
-        if (snapshot.exists && snapshot.value != null) {
-          _userAvatarUrl = snapshot.value.toString();
-        } else {
-          _userAvatarUrl = ''; // No hay avatar configurado
-        }
-        _loadingAvatar = false;
-      });
-    } catch (e) {
-      log.warning('Error al cargar avatar del usuario: $e');
-      setState(() {
-        _userAvatarUrl = '';
-        _loadingAvatar = false;
-      });
-    }
   }
 
   Future<void> _loadGenres() async {
@@ -272,32 +221,31 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
       const SnackBar(content: Text('Sesión cerrada exitosamente')),
     );
   }
-
   @override
   Widget build(BuildContext context) {
-    _isMobileView = MediaQuery.of(context).size.width < 600;
-
+    // Ya no necesitamos detectar si estamos en un dispositivo móvil
+    
     return Scaffold(
-      key: _scaffoldKey,
-      appBar: AppBar(
+      key: _scaffoldKey,      appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: Row(
-          children: [
-            TextButton(
-              onPressed: () {
-                _navigatorKey.currentState?.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const MyHomePage()),
-                  (route) => false,
-                );
-              },
-              child: const Text(
-                'Reviews Waves',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const Spacer(),
-            SizedBox(
-              width: 200,
+        title: TextButton(
+          onPressed: () {
+            _navigatorKey.currentState?.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const MyHomePage()),
+              (route) => false,
+            );
+          },
+          child: const Text(
+            'Reviews Waves',
+            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ),
+        actions: [
+          // Solo mantenemos la barra de búsqueda
+          SizedBox(
+            width: 200,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: TextField(
                 controller: _searchController,
                 decoration: const InputDecoration(
@@ -314,69 +262,14 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
                 onSubmitted: _onSearchSubmitted,
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              tooltip: 'Filtrar por género',
-              onPressed: _showGenreFilterDialog,
-              color: Colors.white,
-            ),
-            IconButton(
-              icon: Icon(
-                Theme.of(context).brightness == Brightness.dark
-                    ? Icons.light_mode
-                    : Icons.dark_mode,
-              ),
-              onPressed: widget.onToggleTheme,
-            ),
-            if (_currentUser == null)
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  );
-                },
-                child: const Text(
-                  'Iniciar Sesión',
-                  style: TextStyle(color: Colors.white),
-                ),
-              )
-            else
-              PopupMenuButton<String>(
-                icon: _buildUserAvatar(),
-                onSelected: (value) {
-                  if (value == 'Cerrar Sesión') {
-                    _logout();
-                  } else if (value == 'Perfil') {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const PerfilScreen()),
-                    ).then((_) {
-                      // Recargar el avatar cuando el usuario regrese del perfil
-                      if (_currentUser != null) {
-                        _loadUserAvatar();
-                      }
-                    });
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'Perfil',
-                    child: Text('Perfil'),
-                  ),
-                  const PopupMenuItem(
-                    value: 'Cerrar Sesión',
-                    child: Text('Cerrar Sesión'),
-                  ),
-                ],
-              ),
-            if (_isMobileView)
-              IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: _openEndDrawer,
-              ),
-          ],
-        ),
+          ),
+          // Solo mostramos el botón del menú lateral
+          IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: _openEndDrawer,
+            color: Colors.white,
+          ),
+        ],
       ),
       endDrawer: Drawer(
         child: ListView(
@@ -467,68 +360,8 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
             page = DetailScreen(id: args['id'], isMovie: args['isMovie']);
           }
           return MaterialPageRoute(builder: (_) => page);
-        },
-      ),
+        },      ),
     );
-  }
-
-  // Implementación del método _buildUserAvatar que faltaba
-  Widget _buildUserAvatar() {
-    if (_loadingAvatar) {
-      return const SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-        ),
-      );
-    } else if (_userAvatarUrl.isEmpty) {
-      // Si no hay avatar, mostrar el icono genérico como antes
-      return const CircleAvatar(
-        backgroundColor: Colors.white24,
-        child: Icon(Icons.person, color: Colors.white),
-      );
-    } else if (_userAvatarUrl.endsWith('.svg')) {
-      // Si es un avatar SVG, usamos SvgPicture
-      return CircleAvatar(
-        backgroundColor: Colors.white24,
-        child: ClipOval(
-          child: SvgPicture.network(
-            _userAvatarUrl,
-            placeholderBuilder: (BuildContext context) => const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            ),
-            width: 30,
-            height: 30,
-            fit: BoxFit.cover,
-          ),
-        ),
-      );
-    } else {
-      // Para imágenes normales, usamos CachedNetworkImage
-      return CircleAvatar(
-        backgroundColor: Colors.white24,
-        child: ClipOval(
-          child: CachedNetworkImage(
-            imageUrl: _userAvatarUrl,
-            placeholder: (context, url) => const CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-            errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.white),
-            width: 30,
-            height: 30,
-            fit: BoxFit.cover,
-          ),
-        ),
-      );
-    }
   }
 }
 
@@ -545,10 +378,10 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final ApiService _apiService = ApiService();
-  late Future<List<dynamic>> _contentFuture;
-  late Future<List<dynamic>> _moviesFuture;
-  late Future<List<dynamic>> _tvShowsFuture;
-  late Future<Map<int, String>> _genresFuture;
+  Future<List<dynamic>>? _contentFuture;  // Cambiado a nullable para evitar LateInitializationError
+  Future<List<dynamic>>? _moviesFuture;
+  Future<List<dynamic>>? _tvShowsFuture;
+  Future<Map<int, String>>? _genresFuture;
   Map<int, String> _genreMap = {};
   bool _genresLoaded = false;
 
@@ -557,7 +390,6 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
     _loadAllData();
   }
-
   Future<void> _loadAllData() async {
     _genresFuture = _fetchGenres();
     _moviesFuture = _apiService.fetchMovies();
@@ -565,10 +397,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // Precargar los géneros antes de mostrar cualquier contenido
     try {
-      _genreMap = await _genresFuture;
-      _genresLoaded = true;
-      if (mounted) {
-        setState(() {});
+      final genreResult = await _genresFuture;
+      if (genreResult != null) {
+        _genreMap = genreResult;
+        _genresLoaded = true;
+        if (mounted) {
+          setState(() {});
+        }
       }
     } catch (e) {
       log.info('Error precargando géneros: $e');
@@ -584,6 +419,23 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     } else {
       _contentFuture = _apiService.fetchMovies();
+    }
+
+    // Asegurarse de inicializar _contentFuture dentro de un setState para reflejar cambios en la UI
+    if (mounted) {
+      setState(() {
+        if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
+          _contentFuture = _apiService.searchMovies(widget.searchQuery!);
+        } else if (widget.filteredGenreId != null) {
+          if (widget.isMovie == true) {
+            _contentFuture = _apiService.fetchMoviesByGenre(widget.filteredGenreId!);
+          } else {
+            _contentFuture = _apiService.fetchTVShowsByGenre(widget.filteredGenreId!);
+          }
+        } else {
+          _contentFuture = _apiService.fetchMovies();
+        }
+      });
     }
   }
 
@@ -633,9 +485,12 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if ((widget.searchQuery != null && widget.searchQuery!.isNotEmpty) || 
+  Widget build(BuildContext context) {    if ((widget.searchQuery != null && widget.searchQuery!.isNotEmpty) || 
         widget.filteredGenreId != null) {
+      // Si _contentFuture es null (no inicializado), mostramos un indicador de carga
+      if (_contentFuture == null) {
+        return const Center(child: CircularProgressIndicator());
+      }
       return FutureBuilder<List<dynamic>>(
         future: _contentFuture,
         builder: (context, snapshot) {
@@ -686,8 +541,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                   const SizedBox(height: 8),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      setState(() {
+                    onPressed: () {                      setState(() {
                         if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) {
                           _contentFuture = _apiService.searchMovies(widget.searchQuery!);
                         } else if (widget.filteredGenreId != null) {
@@ -696,6 +550,9 @@ class _MyHomePageState extends State<MyHomePage> {
                           } else {
                             _contentFuture = _apiService.fetchTVShowsByGenre(widget.filteredGenreId!);
                           }
+                        } else {
+                          // Valor por defecto si no hay búsqueda o filtro
+                          _contentFuture = _apiService.fetchMovies();
                         }
                       });
                     },
@@ -892,27 +749,34 @@ class _MyHomePageState extends State<MyHomePage> {
             
             const SizedBox(height: 20),
             _buildSectionHeader(context, 'Popular Movies'),
-            FutureBuilder<List<dynamic>>(
+            _moviesFuture == null 
+            ? _buildLoadingCarousel()
+            : FutureBuilder<List<dynamic>>(
               future: _moviesFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return _buildLoadingCarousel();
                 } else if (snapshot.hasError) {
                   return _buildErrorWidget('Error cargando películas');
+                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return _buildErrorWidget('No hay películas disponibles');
                 } else {
                   return _buildCarousel(snapshot.data!, isMovie: true);
                 }
               },
             ),
-            const SizedBox(height: 20),
-            _buildSectionHeader(context, 'Popular TV Shows'),
-            FutureBuilder<List<dynamic>>(
+            const SizedBox(height: 20),            _buildSectionHeader(context, 'Popular TV Shows'),
+            _tvShowsFuture == null 
+            ? _buildLoadingCarousel()
+            : FutureBuilder<List<dynamic>>(
               future: _tvShowsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return _buildLoadingCarousel();
                 } else if (snapshot.hasError) {
                   return _buildErrorWidget('Error cargando series');
+                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return _buildErrorWidget('No hay series disponibles');
                 } else {
                   return _buildCarousel(snapshot.data!, isMovie: false);
                 }
@@ -934,6 +798,9 @@ class _MyHomePageState extends State<MyHomePage> {
   
   // Widget para el banner destacado de contenido
   Widget _buildFeaturedBanner() {
+    if (_moviesFuture == null) {
+      return const SizedBox(height: 200);
+    }
     return FutureBuilder<List<dynamic>>(
       future: _moviesFuture,
       builder: (context, snapshot) {
