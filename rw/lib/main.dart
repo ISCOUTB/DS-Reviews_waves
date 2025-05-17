@@ -104,6 +104,14 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
   bool _loadingGenres = true;
   String _userAvatarUrl = '';
   bool _loadingAvatar = false;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  // Variable para determinar si estamos en un dispositivo móvil
+  bool _isMobileView = false;
+
+  // Método para abrir el drawer derecho
+  void _openEndDrawer() {
+    _scaffoldKey.currentState?.openEndDrawer();
+  }
 
   @override
   void initState() {
@@ -267,7 +275,10 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    _isMobileView = MediaQuery.of(context).size.width < 600;
+
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
         title: Row(
@@ -359,6 +370,91 @@ class _GlobalScaffoldState extends State<GlobalScaffold> {
                   ),
                 ],
               ),
+            if (_isMobileView)
+              IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: _openEndDrawer,
+              ),
+          ],
+        ),
+      ),
+      endDrawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+              ),
+              child: Text(
+                'Menú',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                ),
+              ),
+            ),
+            // Opción para cambiar entre modo oscuro y claro
+            ListTile(
+              leading: Icon(
+                Theme.of(context).brightness == Brightness.light
+                  ? Icons.dark_mode
+                  : Icons.light_mode
+              ),
+              title: Text(
+                Theme.of(context).brightness == Brightness.light
+                  ? 'Modo Oscuro'
+                  : 'Modo Claro'
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                widget.onToggleTheme();
+              },
+            ),
+            // Opción para filtrar películas
+            ListTile(
+              leading: const Icon(Icons.filter_list),
+              title: const Text('Filtrar por género'),
+              onTap: () {
+                Navigator.pop(context);
+                _showGenreFilterDialog();
+              },
+            ),
+            // Opción para iniciar sesión (solo cuando no hay usuario autenticado)
+            if (_currentUser == null)
+              ListTile(
+                leading: const Icon(Icons.login),
+                title: const Text('Iniciar Sesión'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  );
+                },
+              ),
+            // Opciones que solo se muestran cuando el usuario está autenticado
+            if (_currentUser != null) ...[
+              ListTile(
+                leading: const Icon(Icons.person),
+                title: const Text('Perfil'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const PerfilScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.logout),
+                title: const Text('Cerrar Sesión'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _logout();
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -1013,7 +1109,7 @@ class _MyHomePageState extends State<MyHomePage> {
       },
     );
   }
-  
+
   // Widget para mostrar estado de carga de los carruseles
   Widget _buildLoadingCarousel() {
     return SizedBox(
@@ -1163,11 +1259,11 @@ class _MyHomePageState extends State<MyHomePage> {
       }).toList(),
     );
   }
-  
+
   // Carrusel pequeño para los géneros
   Widget _buildMiniCarousel(List<dynamic> items, {required bool isMovie, required String genreName}) {
     final ScrollController scrollController = ScrollController();
-    
+
     return SizedBox(
       height: 200, // Altura más compacta para el mini-carrusel
       child: Stack(
@@ -1229,7 +1325,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                 child: const Icon(Icons.error, color: Colors.white),
                               ),
                             ),
-                            
+
                             // Puntuación
                             if (item['vote_average'] != null)
                               Positioned(
@@ -1297,7 +1393,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 .slideY(begin: 0.1, end: 0, duration: 300.ms, delay: (50 * index).ms);
             },
           ),
-          
+
           // Botones de navegación mejorados para mini-carruseles
           if (items.length > 4)
             Positioned(
@@ -1319,7 +1415,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
             ),
-            
+
           if (items.length > 4)
             Positioned(
               right: 0,
@@ -1340,7 +1436,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
             ),
-          
+
           // Botón para ver todos los resultados del género
           Positioned(
             bottom: 8,
@@ -1381,7 +1477,7 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
-  
+
   Widget _buildSectionHeader(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -1433,7 +1529,7 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ).animate().fadeIn(duration: 600.ms),
           ),
-          
+
           ListView.separated(
             controller: scrollController,
             scrollDirection: Axis.horizontal,
@@ -1495,7 +1591,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               ),
                             ),
                           ),
-                          
+
                           // Gradiente superior para mejorar contraste
                           Positioned(
                             top: 0,
@@ -1515,7 +1611,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               ),
                             ),
                           ),
-                          
+
                           // Indicador de tipo (película/serie)
                           Positioned(
                             top: 8,
@@ -1543,7 +1639,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               ),
                             ),
                           ),
-                          
+
                           // Puntuación
                           if (item['vote_average'] != null)
                             Positioned(
@@ -1633,13 +1729,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 .scale(
                   begin: const Offset(0.9, 0.9),
                   end: const Offset(1, 1),
-                  duration: 350.ms, 
+                  duration: 350.ms,
                   delay: (70 * index).ms,
                   curve: Curves.easeOutQuad,
                 );
             },
           ),
-          
+
           // Botones de navegación mejorados
           if (items.length > 3)
             Positioned(
@@ -1658,7 +1754,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 isLeft: true,
               ),
             ),
-            
+
           if (items.length > 3)
             Positioned(
               right: 0,
@@ -1756,3 +1852,4 @@ class _MyHomePageState extends State<MyHomePage> {
     return (opacity * 255).round();
   }
 }
+
