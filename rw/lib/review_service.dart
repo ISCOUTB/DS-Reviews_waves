@@ -1,5 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:logging/logging.dart';
+
+// Inicializar logger para este servicio
+final log = Logger('ReviewService');
 
 class ReviewService {
   // Instancia de Firestore
@@ -106,7 +110,7 @@ class ReviewService {
         throw Exception('La reseña no existe');
       }
     } catch (e) {
-      print('Error eliminando reseña: $e');
+      log.severe('Error eliminando reseña: $e');
       throw Exception('Error al eliminar la reseña: $e');
     }
   }

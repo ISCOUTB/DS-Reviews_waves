@@ -1,3 +1,4 @@
+// Archivo temporal para avatar_service corregido
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -147,13 +148,12 @@ class SimpleAvatarService {
     required VoidCallback onSave,
   }) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.8,
+      height: MediaQuery.of(context).size.height * 0.8, // Aumentamos la altura para mostrar más avatares
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),        boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(51),
+            color: Colors.black.withAlpha(51), // 0.2 * 255 = 51
             blurRadius: 10,
             spreadRadius: 1,
           ),
@@ -205,8 +205,8 @@ class SimpleAvatarService {
                       child: CachedNetworkImage(
                         imageUrl: selectedAvatar,
                         placeholder: (context, url) => const SizedBox(
-                          width: 30,
-                          height: 30,
+                          width: 30, 
+                          height: 30, 
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                         errorWidget: (context, url, error) => const Icon(Icons.error),
@@ -242,17 +242,18 @@ class SimpleAvatarService {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: GridView.builder(
                 padding: const EdgeInsets.only(bottom: 10),
+                // Hacemos el grid scrollable para mostrar todos los avatares
                 physics: const BouncingScrollPhysics(),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
+                  crossAxisCount: 4, // Cambiamos a 4 columnas para mejor visualización
                   crossAxisSpacing: 12,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 0.8,
+                  mainAxisSpacing: 16, // Aumentamos un poco el espacio vertical
+                  childAspectRatio: 0.8, // Ajustamos para que quepa el nombre
                 ),
                 itemCount: avatarOptions.length,
                 itemBuilder: (context, index) {
                   final avatarUrl = avatarOptions[index];
-                  final bool isSelected = selectedAvatar == avatarUrl;
+                  bool isSelected = selectedAvatar == avatarUrl;
                   
                   return Column(
                     mainAxisSize: MainAxisSize.min,
@@ -268,7 +269,7 @@ class SimpleAvatarService {
                               ),
                               borderRadius: BorderRadius.circular(12),
                               color: Colors.grey[200],
-                              boxShadow: isSelected
+                              boxShadow: isSelected 
                                   ? [
                                       BoxShadow(
                                         color: Theme.of(context).primaryColor.withAlpha(opacityToAlpha(0.2)),
@@ -282,6 +283,7 @@ class SimpleAvatarService {
                               borderRadius: BorderRadius.circular(10),
                               child: Stack(
                                 children: [
+                                  // Avatar previamente cargado
                                   Positioned.fill(
                                     child: CachedNetworkImage(
                                       imageUrl: avatarUrl,
@@ -289,8 +291,8 @@ class SimpleAvatarService {
                                         color: Colors.grey[300],
                                         child: const Center(
                                           child: SizedBox(
-                                            width: 20,
-                                            height: 20,
+                                            width: 20, 
+                                            height: 20, 
                                             child: CircularProgressIndicator(strokeWidth: 2),
                                           ),
                                         ),
@@ -302,6 +304,8 @@ class SimpleAvatarService {
                                       fit: BoxFit.cover,
                                     ),
                                   ),
+                                  
+                                  // Indicador de selección
                                   if (isSelected)
                                     Positioned(
                                       top: 4,
@@ -325,14 +329,16 @@ class SimpleAvatarService {
                           ),
                         ),
                       ),
+                      
+                      // Nombre del avatar
                       const SizedBox(height: 4),
                       Text(
                         getAvatarName(avatarUrl),
                         style: GoogleFonts.poppins(
                           fontSize: 10,
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected
-                              ? Theme.of(context).primaryColor
+                          color: isSelected 
+                              ? Theme.of(context).primaryColor 
                               : Theme.of(context).textTheme.bodyMedium?.color,
                         ),
                         overflow: TextOverflow.ellipsis,

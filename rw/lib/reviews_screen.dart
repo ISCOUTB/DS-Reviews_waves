@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'review_service.dart';
 import 'write_review_screen.dart';
+import 'utils/color_utils.dart';
 
 class ReviewsScreen extends StatefulWidget {
   final int movieId;
@@ -286,7 +287,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: ratingColor.withOpacity(0.1),
+        color: ColorUtils.withSafeOpacity(ratingColor, 0.1),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: ratingColor,
@@ -305,8 +306,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           Text(
             rating.toStringAsFixed(1),
             style: TextStyle(
-              fontWeight: FontWeight.bold,
               color: ratingColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
             ),
           ),
         ],
@@ -391,8 +393,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 FirebaseFirestore.instance
                   .collection('reviews')
                   .doc(reviewId)
-                  .delete()
-                  .then((_) {
+                  .delete()                  .then((_) {
                     if (mounted) {
                       setState(() {
                         _reviewsStream = _reviewService.getReviewsForMedia(widget.movieId.toString());
@@ -401,7 +402,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   })
                   .catchError((error) {
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      // Guardamos la referencia antes de usarla
+                      final BuildContext currentContext = context;
+                      // Usamos la referencia guardada de forma segura
+                      ScaffoldMessenger.of(currentContext).showSnackBar(
                         const SnackBar(
                           content: Text('No se pudo eliminar. Intenta de nuevo.'),
                           duration: Duration(seconds: 2),

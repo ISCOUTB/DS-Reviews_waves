@@ -144,10 +144,9 @@ class FavoritesGrid extends StatelessWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
+                      end: Alignment.bottomCenter,                      colors: [
                         Colors.transparent,
-                        Colors.black.withOpacity(0.6),
+                        Colors.black.withAlpha(153), // 0.6 * 255 = 153
                       ],
                       stops: const [0.7, 1.0],
                     ),
@@ -162,7 +161,7 @@ class FavoritesGrid extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1), // Padding mínimo
                   decoration: BoxDecoration(
-                    color: movie['tipo'] == 'pelicula' ? Colors.redAccent.withOpacity(0.8) : Colors.blueAccent.withOpacity(0.8),
+                    color: movie['tipo'] == 'pelicula' ? Colors.redAccent.withAlpha(204) : Colors.blueAccent.withAlpha(204), // 0.8 * 255 = 204
                     borderRadius: const BorderRadius.only(
                       bottomLeft: Radius.circular(3),
                     ),
@@ -214,7 +213,7 @@ class FavoritesGrid extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(1),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
+                      color: Colors.black.withAlpha(128), // 0.5 * 255 = 128
                       borderRadius: const BorderRadius.only(
                         bottomRight: Radius.circular(3),
                       ),

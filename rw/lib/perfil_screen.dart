@@ -9,6 +9,7 @@ import 'package:logging/logging.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'utils/color_utils.dart';
 
 import 'widgets/profile_stats_card.dart';
 import 'widgets/profile_edit_form.dart';
@@ -72,10 +73,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
     await _loadUserReviews();
     setState(() {});
   }
-  // Convertir valores de opacidad (0.0-1.0) a valores alpha (0-255)
-  int _opacityToAlpha(double opacity) {
-    return SimpleAvatarService.opacityToAlpha(opacity);
-  }// Generamos 5 avatares fijos para la selección
+  // Generamos 5 avatares fijos para la selección
   void _generateAvatarOptions() {
     _avatarOptions = SimpleAvatarService.getAvatarOptions();
   }
@@ -641,7 +639,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                                 Shadow(
                                   offset: const Offset(1, 1),
                                   blurRadius: 3.0,
-                                  color: Colors.black.withAlpha(_opacityToAlpha(0.5)),
+                                  color: ColorUtils.withSafeOpacity(Colors.black, 0.5),
                                 ),
                               ],
                             ),
@@ -653,7 +651,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
                                 end: Alignment.bottomCenter,
                                 colors: [
                                   Theme.of(context).primaryColor,
-                                  Theme.of(context).primaryColor.withOpacity(0.7),
+                                  ColorUtils.withSafeOpacity(Theme.of(context).primaryColor, 0.7),
                                 ],
                               ),
                             ),
@@ -787,7 +785,7 @@ class _PerfilScreenState extends State<PerfilScreen> with TickerProviderStateMix
           // Indicador de carga al guardar
           if (_isSaving)
             Container(
-              color: Colors.black.withAlpha(_opacityToAlpha(0.3)),
+              color: ColorUtils.withSafeOpacity(Colors.black, 0.3),
               child: const Center(
                 child: CircularProgressIndicator(),
               ),

@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
-import 'api_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
-import 'package:logging/logging.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:lottie/lottie.dart';
+import 'api_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:logging/logging.dart';
 import 'reviews_screen.dart';
 import 'write_review_screen.dart';
+import 'utils/color_utils.dart';
 
 // Inicializamos el logger para la pantalla de detalles
 final log = Logger('DetailScreen');
@@ -23,17 +24,12 @@ class DetailScreen extends StatefulWidget {
   DetailScreenState createState() => DetailScreenState();
 }
 
-class DetailScreenState extends State<DetailScreen> with SingleTickerProviderStateMixin {
+class DetailScreenState extends State<DetailScreen> {
   final ApiService _apiService = ApiService();
-  Map<String, dynamic>? _details;
-  bool _isLoading = true;
+  Map<String, dynamic>? _details;  bool _isLoading = true;
   String _errorMessage = '';
   bool _isFavorite = false;
   bool _isCheckingFavorite = true;
-  
-  // Animación para el botón de favorito
-  late AnimationController _favoriteAnimController;
-  bool _showFavoriteAnimation = false;
   
   // Referencia a la base de datos de Firebase
   final _database = FirebaseDatabase.instanceFor(
@@ -43,21 +39,15 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
   
   // Usuario actual
   final User? _currentUser = FirebaseAuth.instance.currentUser;
-
   @override
   void initState() {
     super.initState();
     _loadDetails();
     _checkIfFavorite();
-    _favoriteAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    );
   }
 
   @override
   void dispose() {
-    _favoriteAnimController.dispose();
     super.dispose();
   }
 
@@ -111,83 +101,97 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
   
   // Cambiar el estado de favorito (añadir o eliminar)
   Future<void> _toggleFavorite() async {
-    if (_currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Necesitas iniciar sesión para guardar favoritos')),
-      );
+    if (!mounted) return;
+    
+    final currentUser = _currentUser;
+    final uid = currentUser?.uid;
+    if (uid == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Debes iniciar sesión para usar esta función')),
+        );
+      }
       return;
     }
-    
-    if (_details == null) return;
     
     setState(() {
       _isCheckingFavorite = true;
     });
-    
+
     try {
-      final String itemType = widget.isMovie ? 'pelicula' : 'serie';
-      final String itemId = '${widget.id}';
+      final userFavoritesRef = _database.child('usuarios/$uid/favoritos');
       
-      // Comprobar si ya existe en favoritos
-      DataSnapshot existingSnapshot = await _database
-          .child('usuarios/${_currentUser.uid}/favoritos')
+      // Buscamos si ya existe en favoritos
+      final favorites = await userFavoritesRef
           .orderByChild('id')
-          .equalTo(itemId)
+          .equalTo('${widget.id}')
           .get();
-      
-      if (existingSnapshot.exists) {
+
+      if (!mounted) return;
+
+      if (favorites.exists) {
         // Si existe, lo eliminamos
-        Map<dynamic, dynamic> favorites = existingSnapshot.value as Map;
-        String key = favorites.keys.first;
-        await _database.child('usuarios/${_currentUser.uid}/favoritos/$key').remove();
+        final Map<dynamic, dynamic> favData = favorites.value as Map<dynamic, dynamic>;
+        final String key = favData.keys.first.toString();
+        await userFavoritesRef.child(key).remove();
+        
+        if (!mounted) return;
         
         setState(() {
           _isFavorite = false;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Eliminado de favoritos')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Eliminado de favoritos')),
+          );
+        }
       } else {
         // Si no existe, lo añadimos
-        // Preparamos los datos a guardar
-        final String title = widget.isMovie ? _details!['title'] ?? 'Sin título' : _details!['name'] ?? 'Sin título';
-        final String? posterPath = _details!['poster_path'];
+        final details = _details;
+        if (details == null) {
+          log.warning('No se pueden obtener los detalles del contenido');
+          return;
+        }
+        
+        final String title = widget.isMovie ? details['title'] ?? 'Sin título' : details['name'] ?? 'Sin título';
+        final String? posterPath = details['poster_path'];
         final String posterUrl = posterPath != null ? 'https://image.tmdb.org/t/p/w185$posterPath' : '';
         
         final Map<String, dynamic> favoriteData = {
-          'id': itemId,
-          'tipo': itemType,
+          'id': '${widget.id}',
+          'tipo': widget.isMovie ? 'movie' : 'tv',
           'titulo': title,
           'posterUrl': posterUrl,
           'fechaAgregado': DateTime.now().toIso8601String(),
         };
         
         // Guardamos en Firebase
-        await _database.child('usuarios/${_currentUser.uid}/favoritos').push().set(favoriteData);
+        await userFavoritesRef.push().set(favoriteData);
         
-        setState(() {
-          _isFavorite = true;
-          _showFavoriteAnimation = true;
-        });
-        
-        _favoriteAnimController.forward().then((_) {
-          _favoriteAnimController.reset();
+        if (!mounted) return;
           setState(() {
-            _showFavoriteAnimation = false;
-          });
+          _isFavorite = true;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Añadido a favoritos')),
-        );
+        // Ya no es necesario mostrar la animación
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Añadido a favoritos')),
+          );
+        }
       }
     } catch (e) {
       log.severe('Error al cambiar estado de favorito: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    } finally {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+    
+    if (mounted) {
       setState(() {
         _isCheckingFavorite = false;
       });
@@ -259,231 +263,183 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
       ),
     );
   }
-
-  Widget _buildDetailContent() {
-    if (_details == null) {
-      return const Center(child: Text('No se encontraron detalles'));
-    }
-
-    final String title = widget.isMovie ? _details!['title'] ?? 'Sin título' : _details!['name'] ?? 'Sin título';
-    final String overview = _details!['overview'] ?? 'No hay sinopsis disponible';
-    final String? posterPath = _details!['poster_path'];
-    final String posterUrl = posterPath != null ? 'https://image.tmdb.org/t/p/w342$posterPath' : '';
-    final String? backdropPath = _details!['backdrop_path'];
-    final String backdropUrl = backdropPath != null 
-        ? 'https://image.tmdb.org/t/p/w1280$backdropPath' 
-        : 'https://via.placeholder.com/1280x720';
+  Widget _buildDetailContent() {    
+    final posterUrl = 'https://image.tmdb.org/t/p/w500${_details!["poster_path"]}';
+    final posterPath = _details!['poster_path'];
+    final backdropPath = _details!['backdrop_path'];
+    final backdropUrl = backdropPath != null 
+        ? 'https://image.tmdb.org/t/p/original$backdropPath'
+        : null;
+    final title = _details!['title'] ?? _details!['name'] ?? 'Sin título';
+    final overview = _details!['overview'] ?? 'Sin descripción disponible';
+    final genreNames = (_details!['genres'] as List?)
+        ?.map((g) => g['name'] as String)
+        .join(', ') ?? 'Sin géneros';
+    final voteAverage = (_details!['vote_average'] ?? 0.0).toDouble();
     
-    final String genreNames = _details!['genres'] != null
-        ? _details!['genres'].map<String>((g) => g['name'].toString()).join(', ')
-        : 'Sin géneros';
-    
-    final double voteAverage = (_details!['vote_average'] ?? 0.0).toDouble();
-    final String releaseDate = widget.isMovie 
-        ? (_details!['release_date'] ?? 'Desconocido')
-        : (_details!['first_air_date'] ?? 'Desconocido');
-    final List<dynamic> cast = _details!['credits']?['cast'] ?? [];
-    final String director = widget.isMovie 
-        ? _getDirector(_details!['credits']?['crew'] ?? [])
-        : 'N/A';
-        
     return Stack(
       children: [
-        // Imagen de fondo con carga progresiva
+        // Background image with gradient overlay
         Positioned.fill(
-          child: CachedNetworkImage(
-            imageUrl: backdropUrl,
-            fit: BoxFit.cover,
-            placeholder: (context, url) => Shimmer.fromColors(
-              baseColor: Colors.grey[300]!,
-              highlightColor: Colors.grey[100]!,
-              child: Container(color: Colors.grey),
-            ),
-            errorWidget: (context, url, error) => Container(
-              color: Colors.grey[900],
-              child: const Icon(Icons.broken_image, size: 50, color: Colors.white),
-            ),
-          ),
-        ),
-        
-        // Efecto de difuminado con gradiente
-        Positioned.fill(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withAlpha(_opacityToAlpha(0.7)),
-                  Colors.black.withAlpha(_opacityToAlpha(0.9)),
-                  Colors.black,
-                ],
+          child: Stack(
+            children: [
+              // Backdrop image
+              if (backdropUrl != null)
+                Positioned.fill(
+                  child: CachedNetworkImage(
+                    imageUrl: backdropUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(color: Colors.black),
+                    errorWidget: (context, url, error) => Container(color: Colors.black),
+                  ),
+                ),
+              // Gradient overlay
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        ColorUtils.withSafeOpacity(Colors.black, 0.5),
+                        ColorUtils.withSafeOpacity(Colors.black, 0.8),
+                        Colors.black,
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
-        
-        // Contenido principal
+
+        // Main content
         Positioned.fill(
           child: SingleChildScrollView(
             padding: const EdgeInsets.only(top: 100, bottom: 20, left: 16, right: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Área superior con póster e info básica
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Póster con animación y sombras
-                    if (posterUrl.isNotEmpty)
-                      Hero(
-                        tag: 'poster_${widget.id}',
-                        child: Container(
-                          width: 150,
-                          height: 225,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(_opacityToAlpha(0.5)),
-                                spreadRadius: 1,
-                                blurRadius: 10,
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: CachedNetworkImage(
-                              imageUrl: posterUrl,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => Shimmer.fromColors(
-                                baseColor: Colors.grey[800]!,
-                                highlightColor: Colors.grey[600]!,
-                                child: Container(color: Colors.grey[800]),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: Colors.grey[800],
-                                child: const Icon(Icons.broken_image, color: Colors.white70),
-                              ),
-                            ),
-                          ),
+                // Poster with shadow
+                Hero(
+                  tag: 'poster_${widget.id}',
+                  child: Container(
+                    width: 150,
+                    height: 225,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: ColorUtils.withSafeOpacity(Colors.black, 0.5),
+                          spreadRadius: 1,
+                          blurRadius: 10,
                         ),
-                      ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.2, end: 0, duration: 600.ms),
-                    const SizedBox(width: 16),
-                    
-                    // Información básica
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Título con animación
-                          Text(
-                            title,
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ).animate().fadeIn(delay: 100.ms).slideX(begin: 0.2, end: 0, duration: 500.ms),
-                          
-                          const SizedBox(height: 8),
-                          
-                          // Fecha de lanzamiento
-                          Row(
-                            children: [
-                              const Icon(Icons.calendar_today, size: 16, color: Colors.white70),
-                              const SizedBox(width: 4),
-                              Text(
-                                releaseDate,
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
-                          ).animate().fadeIn(delay: 200.ms),
-                          
-                          const SizedBox(height: 8),
-                          
-                          // Géneros
-                          Text(
-                            'Géneros: $genreNames',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.white70,
-                            ),
-                          ).animate().fadeIn(delay: 300.ms),
-                          
-                          const SizedBox(height: 8),
-                          
-                          // Director (solo para películas)
-                          if (widget.isMovie && director != 'N/A')
-                            Text(
-                              'Director: $director',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.white70,
-                              ),
-                            ).animate().fadeIn(delay: 400.ms),
-                          
-                          const SizedBox(height: 16),
-                          
-                          // Calificación y botón de favorito
-                          Row(
-                            children: [
-                              // Calificación con estrellas
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: _getColorFromRating(voteAverage),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.star, color: Colors.white, size: 18),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      voteAverage.toStringAsFixed(1),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ).animate().fadeIn(delay: 500.ms),
-                              
-                              const Spacer(),
-                              
-                              // Botón de favorito con animación
-                              Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(
-                                      _isFavorite ? Icons.favorite : Icons.favorite_border,
-                                      color: _isFavorite ? Colors.red : Colors.white,
-                                      size: 30,
-                                    ),
-                                    onPressed: _isCheckingFavorite ? null : _toggleFavorite,
-                                  ),
-                                  if (_showFavoriteAnimation)
-                                    Lottie.asset(
-                                      'assets/lotties/heart-animation.json',
-                                      controller: _favoriteAnimController,
-                                      width: 80,
-                                      height: 80,
-                                    ),
-                                ],
-                              ).animate().fadeIn(delay: 500.ms),
-                            ],
-                          ),
-                        ],
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: posterUrl,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Shimmer.fromColors(
+                          baseColor: Colors.grey[800]!,
+                          highlightColor: Colors.grey[600]!,
+                          child: Container(color: Colors.grey[800]),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey[800],
+                          child: const Icon(Icons.broken_image, color: Colors.white70),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Title with animation
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ).animate().fadeIn(delay: 100.ms).slideX(begin: 0.2, end: 0, duration: 500.ms),
+                
+                const SizedBox(height: 8),
+                
+                // Release date
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_today, size: 16, color: Colors.white70),
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.isMovie 
+                          ? (_details!['release_date'] ?? 'Desconocido')
+                          : (_details!['first_air_date'] ?? 'Desconocido'),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white70,
                       ),
                     ),
                   ],
-                ),
+                ).animate().fadeIn(delay: 200.ms),
+                
+                const SizedBox(height: 8),
+                
+                // Genres
+                Text(
+                  'Géneros: $genreNames',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.white70,
+                  ),
+                ).animate().fadeIn(delay: 300.ms),
+                
+                const SizedBox(height: 8),
+                
+                // Director (only for movies)
+                if (widget.isMovie)
+                  Text(
+                    'Director: ${_getDirector(_details!['credits']?['crew'] ?? [])}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white70,
+                    ),
+                  ).animate().fadeIn(delay: 400.ms),
+                
+                const SizedBox(height: 16),
+                  // Rating indicator
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: ColorUtils.withSafeOpacity(Colors.black, 0.7),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: _getRatingColor(voteAverage),
+                      width: 2,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.star,
+                        size: 16,
+                        color: _getRatingColor(voteAverage),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        voteAverage.toStringAsFixed(1),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ).animate().fadeIn(delay: 500.ms),
                 
                 const SizedBox(height: 24),
                 
-                // Sección de sinopsis
+                // Sinopsis section
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -507,7 +463,7 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                       child: Text(
                         overview,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Colors.white.withAlpha(_opacityToAlpha(0.9)),
+                          color: ColorUtils.withSafeOpacity(Colors.white, 0.9),
                           height: 1.5,
                         ),
                       ),
@@ -517,8 +473,8 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                 
                 const SizedBox(height: 24),
                 
-                // Sección de reparto
-                if (cast.isNotEmpty) Column(
+                // Cast section
+                if (_details!['credits']?['cast'] != null && (_details!['credits']!['cast'] as List).isNotEmpty) Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -535,9 +491,9 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                       height: 140,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
-                        itemCount: cast.length > 10 ? 10 : cast.length,
+                        itemCount: (_details!['credits']!['cast'] as List).length > 10 ? 10 : (_details!['credits']!['cast'] as List).length,
                         itemBuilder: (context, index) {
-                          final actor = cast[index];
+                          final actor = (_details!['credits']!['cast'] as List)[index];
                           final String? profilePath = actor['profile_path'];
                           final String actorImageUrl = profilePath != null
                               ? 'https://image.tmdb.org/t/p/w185$profilePath'
@@ -555,7 +511,7 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                                     borderRadius: BorderRadius.circular(35),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withAlpha(_opacityToAlpha(0.3)),
+                                        color: ColorUtils.withSafeOpacity(Colors.black, 0.3),
                                         blurRadius: 5,
                                       ),
                                     ],
@@ -591,7 +547,10 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                                 ),
                                 Text(
                                   actor['character'] ?? '',
-                                  style: TextStyle(color: Colors.white.withAlpha(_opacityToAlpha(0.7)), fontSize: 10),
+                                  style: TextStyle(
+                                    color: ColorUtils.withSafeOpacity(Colors.white, 0.7),
+                                    fontSize: 10,
+                                  ),
                                   textAlign: TextAlign.center,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -607,7 +566,7 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
                 
                 const SizedBox(height: 32),
                 
-                // Botones de acción
+                // Action buttons
                 Row(
                   children: [
                     Expanded(
@@ -694,16 +653,6 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
     );
   }
 
-  // Método para obtener el color según la calificación
-  Color _getColorFromRating(double rating) {
-    if (rating >= 8) {
-      return Colors.green;
-    } else if (rating >= 5) {
-      return Colors.orange;
-    } else {
-      return Colors.red;
-    }
-  }
   
   // Método para obtener el director de la película
   String _getDirector(List<dynamic> crew) {
@@ -715,8 +664,14 @@ class DetailScreenState extends State<DetailScreen> with SingleTickerProviderSta
     return 'Desconocido';
   }
 
-  // Función auxiliar para convertir opacity (0.0-1.0) a alpha (0-255)
-  int _opacityToAlpha(double opacity) {
-    return (opacity * 255).round();
+  // Método para obtener el color de la calificación
+  Color _getRatingColor(double rating) {
+    if (rating >= 7) {
+      return Colors.green;
+    } else if (rating >= 4) {
+      return Colors.orange;
+    } else {
+      return Colors.red;
+    }
   }
 }
