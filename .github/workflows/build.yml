@@ -16,14 +16,15 @@ jobs:
     name: SonarQube
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Requiere el historial completo para análisis correcto
+          fetch-depth: 0
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0'  # Ajusta si tu proyecto usa otra versión
+          flutter-version: '3.32.0'
 
       - name: Install dependencies
         run: flutter pub get
