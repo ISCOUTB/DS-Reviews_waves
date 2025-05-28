@@ -89,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               primary: Theme.of(context).primaryColor,
               onPrimary: Colors.white,
             ),
-            dialogTheme: DialogTheme(
+            dialogTheme: DialogThemeData(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20)
               )
@@ -617,7 +617,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ],
                               // Email field
                             const Text(
-                              'Correo electrónico',                              style: const TextStyle(
+                              'Correo electrónico',                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
                                 color: Color(0xFF444444),
